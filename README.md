@@ -110,6 +110,10 @@ Good to know:
 - A webhook in `settings.notify` works here too; its messages link straight to the postings.
 - GitHub pauses scheduled workflows in public repositories after 60 days without any commits.
   If the board stops updating, re-enable the workflow from the Actions tab.
+- If the workflow's *deploy* job fails within a second or two, GitHub refused the deployment:
+  check that **Settings → Pages → Source** is **GitHub Actions**, and that **Settings →
+  Environments → github-pages → Deployment branches and tags** allows the branch the workflow
+  runs on (your default branch).
 
 ## How it finds jobs
 
