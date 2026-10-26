@@ -7,6 +7,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # an install step occasionally stalls; fail instead of waiting for hours
     strategy:
       matrix:
         python-version: ["3.11", "3.13"]
