@@ -136,6 +136,8 @@ class ApplicationRun(Base):
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     parent_run_id: Mapped[int | None] = mapped_column(Integer)
     mode: Mapped[str] = mapped_column(String(10), default="review")
+    # "agent" (Claude drives the browser) or "quick" (plain matching rules, no AI).
+    engine: Mapped[str | None] = mapped_column(String(10), default="agent")
     trigger: Mapped[str] = mapped_column(String(10), default="manual")
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

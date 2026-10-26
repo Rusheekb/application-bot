@@ -209,7 +209,10 @@ def cmd_apply(args: argparse.Namespace, env: Env) -> int:
         manager = ApplyManager(db, env, headless=not args.headed, on_step=show)
         try:
             run_id = await manager.enqueue(
-                args.job_id, mode="submit" if args.submit else "review", trigger="cli"
+                args.job_id,
+                mode="submit" if args.submit and not args.quick else "review",  # Quick fill always asks first
+                trigger="cli",
+                engine="quick" if args.quick else "agent",
             )
             await manager.wait(run_id)
             while True:
@@ -226,14 +229,13 @@ def cmd_apply(args: argparse.Namespace, env: Env) -> int:
                     print("\nWhat's in the form:")
                     for a in answers:
                         print(f"  {a['label'][:70]}: {textwrap.shorten(a['value'] or '(empty)', 90)}")
-                    choice = (
-                        await asyncio.to_thread(
-                            input, "\nSubmit it? [y]es / [n]o / or type changes for the agent: "
-                        )
-                    ).strip()
+                    prompt = "Submit it? [y]es / [n]o" + (
+                        "" if args.quick else " / or type changes for the agent"
+                    )
+                    choice = (await asyncio.to_thread(input, f"\n{prompt}: ")).strip()
                     if choice.lower() in ("y", "yes"):
                         run_id = await manager.approve(run_id)
-                    elif choice.lower() in ("", "n", "no"):
+                    elif args.quick or choice.lower() in ("", "n", "no"):
                         await manager.cancel(run_id)
                         print("Not submitted.")
                         return 0
@@ -336,9 +338,12 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--remote", action="store_true")
     p.add_argument("--sources", default="", help="comma separated, e.g. linkedin,indeed,adzuna")
 
-    p = sub.add_parser("apply", help="run the apply agent for a job (review first unless --submit)")
+    p = sub.add_parser("apply", help="fill in a job's application (review first unless --submit)")
     p.add_argument("job_id", type=int)
-    p.add_argument("--submit", action="store_true", help="submit without asking")
+    p.add_argument(
+        "--quick", action="store_true", help="Quick fill: no AI and no API key; always asks before submitting"
+    )
+    p.add_argument("--submit", action="store_true", help="let the agent submit without asking")
     p.add_argument("--headed", action="store_true", help="show the browser window")
 
     p = sub.add_parser(

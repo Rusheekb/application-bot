@@ -8,6 +8,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from sqlalchemy import case, select
 
+from jobbot.ai import ai_ready
 from jobbot.apply.manager import ApplyError
 from jobbot.db import get_settings
 from jobbot.models import ApplicationRun, Job, utcnow
@@ -17,7 +18,9 @@ router = APIRouter()
 
 
 @router.post("/jobs/{job_id}/apply")
-async def start_apply(request: Request, job_id: int, mode: str = Form("")) -> Response:
+async def start_apply(
+    request: Request, job_id: int, mode: str = Form(""), engine: str = Form("agent")
+) -> Response:
     db = get_db(request)
     with db.session() as s:
         if s.get(Job, job_id) is None:
@@ -25,9 +28,16 @@ async def start_apply(request: Request, job_id: int, mode: str = Form("")) -> Re
         settings = get_settings(s)
     if not settings.apply.enabled:
         return Response("Auto-apply is turned off in Settings", status_code=400)
-    run_mode = mode if mode in ("review", "submit") else settings.apply.mode
+    if engine == "quick":
+        run_mode = "review"  # rules can't judge an application on their own: always review first
+    elif not ai_ready(settings.ai):
+        return Response(
+            "The apply agent needs an Anthropic API key. Use Quick fill instead.", status_code=400
+        )
+    else:
+        run_mode = mode if mode in ("review", "submit") else settings.apply.mode
     try:
-        run_id = await get_tasks(request).apply.enqueue(job_id, mode=run_mode)
+        run_id = await get_tasks(request).apply.enqueue(job_id, mode=run_mode, engine=engine)
     except ApplyError as exc:
         return Response(str(exc), status_code=400)
     return Response(status_code=204, headers={"HX-Redirect": f"/applications/{run_id}"})

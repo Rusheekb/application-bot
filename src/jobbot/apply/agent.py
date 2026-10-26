@@ -291,6 +291,9 @@ class ApplyAgent:
         self.mode = mode
         await self.session.set_mode(mode)
 
+    def add_answers(self, answers: dict[str, str]) -> None:
+        """Answers to its questions reach the agent in the resume message; nothing to store."""
+
     def _log(self, kind: str, text: str, **extra: Any) -> None:
         entry = {
             "t": utcnow().isoformat(timespec="seconds"),

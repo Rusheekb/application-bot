@@ -19,6 +19,7 @@ from jobbot.ai.client import LLM, describe_error
 from jobbot.ai.context import application_profile_block
 from jobbot.apply.agent import AgentOutcome, ApplyAgent, task_prompt
 from jobbot.apply.browser import SUBMIT_GUARD_JS, BrowserSession, answers_from_snapshot
+from jobbot.apply.quickfill import QuickFiller
 from jobbot.config import Env
 from jobbot.db import Database, get_profile, get_resume, get_settings, save_profile
 from jobbot.models import ApplicationRun, Job, utcnow
@@ -46,7 +47,7 @@ class ApplyError(Exception):
 @dataclass
 class LiveRun:
     run_id: int
-    agent: ApplyAgent
+    agent: ApplyAgent | QuickFiller
     session: BrowserSession
     context: Any
     expires_at: datetime
@@ -99,7 +100,10 @@ class ApplyManager:
         trigger: str = "manual",
         parent_run_id: int | None = None,
         previous_answers: list[dict] | None = None,
+        engine: str = "agent",
     ) -> int:
+        if engine not in ("agent", "quick"):
+            raise ApplyError(f"unknown engine {engine!r}")
         with self.db.session() as s:
             job = s.get(Job, job_id)
             if job is None:
@@ -108,6 +112,7 @@ class ApplyManager:
             run = ApplicationRun(
                 job_id=job_id,
                 mode=mode or settings.apply.mode,
+                engine=engine,
                 trigger=trigger,
                 status="queued",
                 start_url=job.apply_url or job.url,
@@ -128,6 +133,7 @@ class ApplyManager:
             if run is None or run.status != "ready_for_review":
                 raise ApplyError("this application isn't waiting for review")
             job_id, trigger, answers = run.job_id, run.trigger, list(run.answers or [])
+            engine = run.engine or "agent"
         live = self.live.get(run_id)
         if live is not None:
             self._update(run_id, status="running", mode="submit")
@@ -137,7 +143,12 @@ class ApplyManager:
         # The paused browser session is gone (expired or restarted): redo it in submit mode.
         self._update(run_id, status="superseded")
         return await self.enqueue(
-            job_id, mode="submit", trigger=trigger, parent_run_id=run_id, previous_answers=answers
+            job_id,
+            mode="submit",
+            trigger=trigger,
+            parent_run_id=run_id,
+            previous_answers=answers,
+            engine=engine,
         )
 
     async def _back_to_review(self, run_id: int, live: LiveRun) -> None:
@@ -149,6 +160,11 @@ class ApplyManager:
 
     async def revise(self, run_id: int, instruction: str) -> None:
         live = self._require_live(run_id)
+        if isinstance(live.agent, QuickFiller):
+            raise ApplyError(
+                "Quick fill can't follow written instructions. Answer its questions, add saved answers to "
+                "your profile and run it again, or open the form and finish it yourself."
+            )
         await self._back_to_review(run_id, live)
         mode_note = REVIEW_AGAIN if live.agent.mode == "review" else ""
         message = (
@@ -169,9 +185,11 @@ class ApplyManager:
                 profile = get_profile(s)
                 known = {p.question.strip().lower() for p in profile.qa}
                 for question, answer in answered.items():
-                    if question.strip().lower() not in known:
-                        profile.qa.append(QAPair(question=question.strip(), answer=answer))
+                    question = re.sub(r"\s*\(options: .*\)$", "", question).strip()  # Quick fill's hint
+                    if question.lower() not in known:
+                        profile.qa.append(QAPair(question=question, answer=answer))
                 save_profile(s, profile)
+        live.agent.add_answers(answered)
         await self._back_to_review(run_id, live)
         mode_note = REVIEW_AGAIN if live.agent.mode == "review" else ""
         lines = "\n".join(f"Q: {q}\nA: {a}" for q, a in answered.items())
@@ -294,6 +312,7 @@ class ApplyManager:
             settings = get_settings(s)
             resume = get_resume(s)
             mode, start_url, parent_run_id = run.mode, run.start_url or job.url, run.parent_run_id
+            quick = run.engine == "quick"
             job_snapshot = Job(
                 id=job.id,
                 title=job.title,
@@ -304,7 +323,7 @@ class ApplyManager:
             )
             cover_letter = job.cover_letter
 
-        llm = self._llm_factory(settings.ai)
+        llm = None if quick else self._llm_factory(settings.ai)  # Quick fill needs no model
         try:
             try:
                 import playwright  # noqa: F401
@@ -341,28 +360,45 @@ class ApplyManager:
                         f"Couldn't open the application page: {str(exc).splitlines()[0][:200]}"
                     ) from exc
                 session = BrowserSession(context, page, files=files, mode=mode)
-                agent = ApplyAgent(
-                    llm,
-                    session,
-                    profile_text=application_profile_block(profile, resume.get("text", "")),
-                    task=task_prompt(
-                        job_snapshot,
-                        mode=mode,
-                        start_url=start_url,
+
+                def on_step(entry: dict) -> None:
+                    self._append_step(run_id, entry)
+
+                agent: ApplyAgent | QuickFiller
+                if quick:
+                    agent = QuickFiller(
+                        session,
+                        profile=profile,
+                        files=set(files),
                         allow_consent=settings.apply.allow_consent_checkboxes,
-                        cover_letter_file="cover_letter" in files,
+                        mode=mode,
+                        on_step=on_step,
                         previous_answers=previous_answers,
-                    ),
-                    mode=mode,
-                    effort=settings.ai.agent_effort,
-                    max_steps=settings.apply.max_steps,
-                    on_step=lambda entry: self._append_step(run_id, entry),
-                )
+                    )
+                else:
+                    agent = ApplyAgent(
+                        llm,
+                        session,
+                        profile_text=application_profile_block(profile, resume.get("text", "")),
+                        task=task_prompt(
+                            job_snapshot,
+                            mode=mode,
+                            start_url=start_url,
+                            allow_consent=settings.apply.allow_consent_checkboxes,
+                            cover_letter_file="cover_letter" in files,
+                            previous_answers=previous_answers,
+                        ),
+                        mode=mode,
+                        effort=settings.ai.agent_effort,
+                        max_steps=settings.apply.max_steps,
+                        on_step=on_step,
+                    )
             except BaseException:
                 await context.close()
                 raise
         except BaseException:
-            await llm.aclose()
+            if llm is not None:
+                await llm.aclose()
             raise
         review_first = mode == "review" or parent_run_id is not None
         live = LiveRun(run_id, agent, session, context, _WORKING, headless, review_first)
@@ -408,7 +444,8 @@ class ApplyManager:
             run.generated_answers = outcome.generated_answers
             run.final_url = session.page.url
             run.finished_at = utcnow()
-            run.usage = live.agent.llm.usage.as_dict(live.agent.llm.model)
+            if live.agent.llm is not None:
+                run.usage = live.agent.llm.usage.as_dict(live.agent.llm.model)
             if saved:
                 run.screenshot = shot
             if answers and any(a["value"] for a in answers):
@@ -433,8 +470,9 @@ class ApplyManager:
         if live is not None:
             with contextlib.suppress(Exception):
                 await live.context.close()
-            with contextlib.suppress(Exception):
-                await live.agent.llm.aclose()
+            if live.agent.llm is not None:
+                with contextlib.suppress(Exception):
+                    await live.agent.llm.aclose()
 
     async def _enforce_live_limit(self) -> None:
         """Close the paused sessions closest to expiring; never one that is working or about to."""

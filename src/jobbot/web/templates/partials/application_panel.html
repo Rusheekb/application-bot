@@ -1,13 +1,15 @@
 {% set busy = run.status in ('queued', 'running') or working %}
+{% set quick = run.engine == 'quick' %}
+{% set who = 'jobbot' if quick else 'The agent' %}
 <div {% if busy %}hx-get="/applications/{{ run.id }}/panel" hx-trigger="every 2s" hx-target="#application-panel" hx-swap="innerHTML"{% endif %}>
 <div class="grid-2">
   <div class="stack">
     <section class="card">
       <div class="card-head">
         <h2>{{ run.status|run_status }}</h2>
-        <span class="chip">{{ 'Review first' if run.mode == 'review' else 'Submit' }}{% if run.trigger == 'auto' %} · started automatically{% endif %}</span>
+        <span class="chip">{% if quick %}Quick fill · {% endif %}{{ 'Review first' if run.mode == 'review' else 'Submit' }}{% if run.trigger == 'auto' %} · started automatically{% endif %}</span>
       </div>
-      {% if busy %}<p><span class="spinner" aria-hidden="true"></span> The agent is working on the application. This page updates by itself.</p>{% endif %}
+      {% if busy %}<p><span class="spinner" aria-hidden="true"></span> {{ who }} is working on the application. This page updates by itself.</p>{% endif %}
       {% if run.summary and not busy %}<p>{{ run.summary }}</p>{% endif %}
       {% if run.error %}<div class="notice bad">{{ run.error }}</div>{% endif %}
 
@@ -19,6 +21,9 @@
             <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Open the form myself ↗</a>
             <button class="btn btn-ghost" hx-post="/applications/{{ run.id }}/cancel" hx-confirm="Cancel this application and close the browser?">Cancel</button>
           </div>
+          {% if quick %}
+          <p class="faint" style="margin-top:1rem;font-size:.85rem">Quick fill can't take written instructions. To change an answer, add it under <a href="/profile">Profile → Saved answers</a> and run Quick fill again, or open the form and finish it yourself.</p>
+          {% else %}
           <form hx-post="/applications/{{ run.id }}/revise" style="margin-top:1rem">
             <div class="field">
               <label for="instruction">Ask for changes before submitting</label>
@@ -26,17 +31,18 @@
             </div>
             <div class="form-actions" style="justify-content:flex-start"><button class="btn">Send to the agent</button></div>
           </form>
+          {% endif %}
         {% else %}
           <div class="notice warn">The paused browser has closed (it stays open for a limited time). Submitting now starts a fresh run in submit mode that reuses the answers below.</div>
           <div class="btn-row">
-            <button class="btn btn-good" hx-post="/applications/{{ run.id }}/approve" hx-confirm="Re-run the agent and submit this application?">Re-run and submit</button>
+            <button class="btn btn-good" hx-post="/applications/{{ run.id }}/approve" hx-confirm="Fill the form again and submit this application?">Re-run and submit</button>
             <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Apply myself ↗</a>
           </div>
         {% endif %}
       {% elif run.status == 'needs_input' and not busy %}
         {% if live %}
           <form hx-post="/applications/{{ run.id }}/answers">
-            <p>The agent filled in what it could and needs a few answers to finish:</p>
+            <p>{{ who }} filled in what it could and needs a few answers to finish:</p>
             <div class="stack">
               {% for question in run.missing_info %}
                 <div class="field"><label for="answer-{{ loop.index0 }}">{{ question }}</label><input id="answer-{{ loop.index0 }}" name="answer-{{ loop.index0 }}"></div>
@@ -49,12 +55,12 @@
             </div>
           </form>
         {% else %}
-          <p>The agent needed answers to:</p>
+          <p>{{ who }} needed answers to:</p>
           <ul>{% for q in run.missing_info %}<li>{{ q }}</li>{% endfor %}</ul>
           <p class="muted">Add them under <a href="/profile">Profile → Saved answers</a>, then start a new run from the job page.</p>
         {% endif %}
       {% elif run.status == 'blocked' %}
-        <div class="notice warn">The agent stopped at something only you can do (a CAPTCHA, a sign-in, or a form it couldn't handle). Finish this one yourself:</div>
+        <div class="notice warn">{{ who }} stopped at something only you can do (a CAPTCHA, a sign-in, or a form it couldn't handle). Finish this one yourself:</div>
         <div class="btn-row">
           <a class="btn btn-primary" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Open the application ↗</a>
           <button class="btn" hx-post="/applications/{{ run.id }}/mark-applied">I applied</button>
@@ -62,7 +68,7 @@
         </div>
       {% elif run.status in ('failed', 'cancelled') %}
         {% if run.steps and run.steps|selectattr("text", "equalto", "submit_application")|list %}
-          <div class="notice warn">The agent clicked submit before it stopped, so this application may have gone
+          <div class="notice warn">{{ who }} clicked submit before it stopped, so this application may have gone
             through. Check the employer's site or your email before trying again.</div>
         {% endif %}
         <div class="btn-row">

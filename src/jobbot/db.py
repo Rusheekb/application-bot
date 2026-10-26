@@ -28,6 +28,7 @@ class Database:
 
     def create_all(self) -> None:
         Base.metadata.create_all(self.engine)
+        _add_missing_columns(self.engine)
 
     @contextmanager
     def session(self) -> Iterator[Session]:
@@ -44,6 +45,17 @@ class Database:
 
     def new_session(self) -> Session:
         return self._sessionmaker()
+
+
+def _add_missing_columns(engine: Engine) -> None:
+    """Databases from older versions lack columns added since; add them (always nullable)."""
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            present = {row[1] for row in conn.exec_driver_sql(f'PRAGMA table_info("{table.name}")')}
+            for column in table.columns:
+                if column.name not in present:
+                    kind = column.type.compile(dialect=engine.dialect)
+                    conn.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN "{column.name}" {kind}')
 
 
 def _sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:

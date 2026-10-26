@@ -67,24 +67,28 @@
     </section>
 
     <section class="card">
-      <h2>Apply with the agent</h2>
+      <h2>Fill in the application</h2>
       {% if not settings.apply.enabled %}
-        <p class="muted">Auto-apply is off. Turn it on in <a href="/settings#apply">Settings</a> to let Claude fill in this application for you.</p>
-      {% elif not ai_available %}
-        <p class="muted">Add an Anthropic API key to use the apply agent.</p>
+        <p class="muted">Auto-apply is off. Turn it on in <a href="/settings#apply">Settings</a> to have this application filled in for you.</p>
       {% else %}
         <p class="muted">
-          {% if support == 'supported' %}This application is on {{ job.ats|source_label }}, which the agent handles well.
-          {% elif support == 'login' %}This site ({{ job.ats|source_label }}) usually requires an account, so the agent will likely stop and hand it back to you.
-          {% else %}The agent will try this site; unfamiliar forms may need your help.{% endif %}
+          {% if support == 'supported' %}This application is on {{ job.ats|source_label }}, which jobbot handles well.
+          {% elif support == 'login' %}This site ({{ job.ats|source_label }}) usually requires an account, so jobbot will likely stop and hand it back to you.
+          {% else %}jobbot will try this site; unfamiliar forms may need your help.{% endif %}
         </p>
         <div class="btn-row">
+          {% if ai_available %}
           <button class="btn btn-primary" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "review"}'>Fill application for review</button>
           {% if settings.apply.mode == 'submit' %}
           <button class="btn" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "submit"}' hx-confirm="Let the agent submit this application without asking you first?">Fill &amp; submit</button>
           {% endif %}
+          {% endif %}
+          <button class="btn{{ '' if ai_available else ' btn-primary' }}" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"engine": "quick"}'>Quick fill{{ ' (no AI)' if ai_available }}</button>
         </div>
-        <p class="faint" style="margin-top:.6rem;font-size:.82rem">The agent fills the form from your profile and stops before submitting so you can check it.</p>
+        <p class="faint" style="margin-top:.6rem;font-size:.82rem">
+          {% if ai_available %}The agent fills the whole form with Claude, including written answers. Quick fill uses only your profile and saved answers, and asks you about the rest. Both stop before submitting so you can check.
+          {% else %}Quick fill enters what your profile and saved answers cover and asks you about the rest, then stops before submitting so you can check. It's free; with an Anthropic API key the agent can also write answers to open-ended questions.{% endif %}
+        </p>
       {% endif %}
       {% if runs %}
         <hr>

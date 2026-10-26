@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <h1>Applications</h1>
-    <p class="muted">Every time the apply agent worked on an application. Ones waiting for you are at the top.</p>
+    <p class="muted">Every application jobbot filled in for you. Ones waiting for you are at the top.</p>
   </div>
 </div>
 {% if rows %}
@@ -19,7 +19,7 @@
               {% set cls = {'ready_for_review': 'accent', 'needs_input': 'warn', 'submitted': 'good', 'failed': 'bad', 'blocked': 'warn', 'running': 'accent', 'queued': 'accent'}.get(run.status, '') %}
               <span class="chip {{ cls }}">{{ run.status|run_status }}</span>
             </td>
-            <td>{{ run.mode }}{% if run.trigger == 'auto' %} <span class="faint">(auto)</span>{% endif %}</td>
+            <td>{{ 'quick fill' if run.engine == 'quick' else run.mode }}{% if run.trigger == 'auto' %} <span class="faint">(auto)</span>{% endif %}</td>
             <td>{{ run.created_at|ago }}</td>
             <td class="muted">{{ (run.summary or run.error or '')|truncate(140) }}</td>
           </tr>
@@ -31,7 +31,7 @@
 {% else %}
 <div class="empty card">
   <h2>No applications yet</h2>
-  <p>Turn on the apply agent in <a href="/settings#apply">Settings</a>, then open a job and choose <strong>Fill application for review</strong>.</p>
+  <p>Turn on auto-apply in <a href="/settings#apply">Settings</a>, then open a job and choose <strong>Quick fill</strong> (or, with an Anthropic API key, <strong>Fill application for review</strong>).</p>
 </div>
 {% endif %}
 {% endblock %}

@@ -27,9 +27,11 @@ to quickly.
 - **A review queue for triage**: sort by best match, save, dismiss or mark applied (keyboard
   shortcuts included), keep notes, and track jobs through interviewing, offer and rejected.
 - **Drafts tailored cover letters** from your resume and the posting.
-- **Auto-apply (optional)**: an agent opens the application in a real browser and fills it in
-  from your profile, uploads your resume, answers screening questions from your saved answers,
-  and **stops for your review** before submitting (or submits on its own if you choose).
+- **Auto-apply (optional)**: opens the application in a real browser, fills it in from your
+  profile, uploads your resume, answers screening questions from your saved answers, and **stops
+  for your review** before submitting. **Quick fill** does this with plain matching rules and needs
+  no API key; with a Claude key, the **agent** can also write answers to open-ended questions and
+  find its way through unusual forms (and can submit on its own if you choose).
 - **Notifications** to Discord, Slack, ntfy or any webhook when strong matches appear.
 - **A free hosted job board (optional)**: GitHub Actions scans on a schedule and publishes your
   matches to an encrypted page on GitHub Pages, so you can review jobs from your phone without
@@ -149,7 +151,28 @@ When a job disappears from a company's board, it's marked **Closed**.
 
 ## Auto-apply
 
-Turn it on in **Settings → Auto-apply**, then use **Fill application for review** on a job.
+Turn it on in **Settings → Auto-apply**, then open a job and choose **Quick fill** (no API key
+needed) or, with an Anthropic API key, **Fill application for review** (the agent).
+
+### Quick fill (free, no API key)
+
+Quick fill reads the form the same way the agent does, then fills in what your profile covers:
+name, contact details, links, location, education, current job, resume and cover letter uploads,
+work authorization and sponsorship, voluntary self-identification (declined unless your profile
+says otherwise), "how did you hear about us", salary, notice period and start date, plus anything
+under **Profile → Saved answers**.
+
+- Required questions it can't answer become questions for you. Your answers can be saved, so the
+  next application with the same question fills itself.
+- It answers eligibility questions only from what your profile states: with no work
+  authorization filled in, or for a different country, it asks you instead of guessing.
+- It leaves open-ended questions ("Why do you want to work here?") and skill-specific ones
+  ("Years of experience with Spark") for you, and can't follow written instructions.
+- It always stops for your review; **Submit application** then clicks the form's submit button.
+  The same safeguards apply as for the agent.
+- From the terminal: `jobbot apply JOB_ID --quick`.
+
+### The agent (Claude API key)
 
 - The agent drives a Chromium browser with a small set of tools: read the form, fill fields,
   click, list options, take a screenshot, submit and finish. It works from a structured view of
@@ -192,7 +215,7 @@ jobbot jobs [--status new|saved|applied|...|all] [--min-score N]
 jobbot add-company https://jobs.lever.co/acme [--name Acme]
 jobbot check-company https://boards.greenhouse.io/acme   # fetch and preview, saves nothing
 jobbot add-search "backend engineer" --location "New York, NY" --sources linkedin,indeed
-jobbot apply JOB_ID [--submit] [--headed]             # run the apply agent in the terminal
+jobbot apply JOB_ID [--quick] [--submit] [--headed]   # fill an application (--quick: no AI, no key)
 jobbot export-config [--json]                         # your setup, for the hosted board's JOBBOT_CONFIG
 jobbot publish [--out site] [--state FILE]            # scan and write the encrypted board (used by the workflow)
 ```
@@ -213,8 +236,11 @@ container runs the browser headless.
 
 ## Costs
 
-The app and the hosted job board are free, and both work without an Anthropic API key. Claude
-usage is billed by Anthropic per token, and the defaults keep it modest:
+The app and the hosted job board are free, and both work without an Anthropic API key: you get
+job finding, filtering, the estimated score, the review queue, notifications and Quick fill.
+A key adds Claude's fit analysis, resume parsing, cover letters and the apply agent. Note that a
+Claude.ai subscription doesn't include API access; the API is billed separately, per token, and
+the defaults keep it modest:
 
 - Fit analysis uses `claude-opus-5-5` at low effort, caches your profile and resume across all
   jobs in a scan, and is capped at 25 jobs per scan. Each scan's approximate cost appears in

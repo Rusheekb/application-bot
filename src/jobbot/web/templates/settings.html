@@ -83,9 +83,9 @@
 
   <section class="card" id="apply">
     <h2>Auto-apply</h2>
-    <p class="muted">An agent opens the application in a browser and fills it in from your profile and resume. In review mode it stops before submitting and shows you every answer. It never solves CAPTCHAs, creates accounts or invents experience; it hands those cases back to you.</p>
+    <p class="muted">jobbot opens the application in a browser and fills it in from your profile and resume, then stops before submitting and shows you every answer. <strong>Quick fill</strong> is free and needs no API key: it enters what your profile and saved answers cover and asks you about the rest. With an Anthropic API key, the <strong>agent</strong> can also write answers to open-ended questions. Neither solves CAPTCHAs, creates accounts or invents experience; they hand those cases back to you.</p>
     <div class="form-grid">
-      <label class="check span-all"><input type="checkbox" name="apply_enabled" {{ 'checked' if settings.apply.enabled }}> Enable the apply agent</label>
+      <label class="check span-all"><input type="checkbox" name="apply_enabled" {{ 'checked' if settings.apply.enabled }}> Enable auto-apply</label>
       <fieldset class="field span-all">
         <label>Mode</label>
         <label class="check"><input type="radio" name="apply_mode" value="review" {{ 'checked' if settings.apply.mode == 'review' }}> <span><strong>Review first</strong> (recommended): fill in the form and wait for your approval before submitting</span></label>

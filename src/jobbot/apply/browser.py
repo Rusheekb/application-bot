@@ -474,7 +474,7 @@ class BrowserSession:
         ]
         if state["alerts"]:
             lines.append("Alerts: " + " | ".join(state["alerts"][:6]))
-        if any("visible" in c for c in state["captcha"]):
+        if any("visible challenge" in c for c in state["captcha"]):
             lines.append("A CAPTCHA challenge is now visible.")
         if empty_required:
             lines.append(
