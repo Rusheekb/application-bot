@@ -19,23 +19,40 @@ log = logging.getLogger(__name__)
 
 SNAPSHOT_JS = Path(__file__).with_name("snapshot.js").read_text()
 
-# Injected into every page in review mode: blocks real form submission as a second line of
-# defence behind the click guard (catches Enter-key submits and scripted submits).
-REVIEW_GUARD_JS = """
+# Injected into every page the agent opens, behind the click checks: an application form can only
+# be submitted right after a click the agent was allowed to make (a Next or Continue step, say)
+# or through submit_application, which turns the guard off. Catches Enter-key submits and
+# scripts calling form.submit(), which skips the submit event.
+SUBMIT_GUARD_JS = """
 (() => {
   window.__jobbotReview = true;
   const looksLikeApplication = (form) => form && (
     form.querySelector('input[type=file]') ||
     form.querySelectorAll('input:not([type=hidden]), textarea, select').length >= 3);
+  const approved = () => {
+    if (Date.now() <= (window.__jobbotAllowSubmitUntil || 0)) {
+      window.__jobbotAllowSubmitUntil = 0;
+      return true;
+    }
+    return false;
+  };
+  const blocked = (form) =>
+    window.__jobbotReview && looksLikeApplication(form) && !approved() &&
+    ((window.__jobbotBlockedSubmits = (window.__jobbotBlockedSubmits || 0) + 1), true);
   document.addEventListener('submit', (event) => {
-    if (window.__jobbotReview && looksLikeApplication(event.target)) {
+    if (blocked(event.target)) {
       event.preventDefault();
       event.stopImmediatePropagation();
-      window.__jobbotBlockedSubmits = (window.__jobbotBlockedSubmits || 0) + 1;
     }
   }, true);
+  const nativeSubmit = HTMLFormElement.prototype.submit;
+  HTMLFormElement.prototype.submit = function () {
+    if (!blocked(this)) nativeSubmit.call(this);
+  };
 })();
 """
+# Lets a click the agent was allowed to make submit one form step (see SUBMIT_GUARD_JS).
+ALLOW_STEP_JS = "() => { window.__jobbotAllowSubmitUntil = Date.now() + 4000; }"
 
 CAPTCHA_FRAME_RE = re.compile(
     r"recaptcha|hcaptcha\.com|challenges\.cloudflare\.com|arkoselabs|funcaptcha|captcha-delivery", re.I
@@ -117,6 +134,14 @@ class BrowserSession:
         # "Apply" buttons sometimes open the application form in a new tab.
         self.page = page
 
+    async def set_mode(self, mode: str) -> None:
+        self.mode = mode
+        if mode == "review":
+            # submit_application may have turned the page's submit guard off.
+            for frame in self.page.frames:
+                with contextlib.suppress(Exception):
+                    await frame.evaluate("() => { window.__jobbotReview = true; }")
+
     async def settle(self, timeout_ms: int = 4000) -> None:
         from playwright.async_api import TimeoutError as PlaywrightTimeout
 
@@ -128,6 +153,8 @@ class BrowserSession:
     # -- reading the page --------------------------------------------------------------------
 
     async def snapshot(self) -> dict:
+        if self.page.is_closed():
+            raise ToolError("the browser page was closed")
         await self.settle()
         combined: dict[str, Any] = {
             "url": self.page.url,
@@ -147,13 +174,18 @@ class BrowserSession:
             ):
                 continue
             is_main = frame == self.page.main_frame
+            options = {
+                "startRef": self.next_ref,
+                "maxOptions": 60,
+                "maxText": 1500 if is_main else 300,
+                "review": self.mode == "review",
+            }
             try:
-                data = await frame.evaluate(
-                    SNAPSHOT_JS,
-                    {"startRef": self.next_ref, "maxOptions": 60, "maxText": 1500 if is_main else 300},
-                )
-            except Exception as exc:  # frames can navigate away mid-read
-                log.debug("Snapshot failed in frame %s: %s", frame.url, exc)
+                data = await frame.evaluate(SNAPSHOT_JS, options)
+            except Exception as exc:
+                if is_main:  # an empty result would look like a page without a form
+                    raise ToolError(f"couldn't read the page: {_short_error(exc)}") from exc
+                log.debug("Snapshot failed in frame %s: %s", frame.url, exc)  # frames can navigate away
                 continue
             self.next_ref = max(self.next_ref, int(data.get("nextRef") or self.next_ref))
             if is_main:
@@ -378,20 +410,37 @@ class BrowserSession:
         return " | ".join(text for text, _ in options)
 
     async def click(self, ref: str) -> str:
+        from playwright.async_api import Error as PlaywrightError
+
         info = self.buttons.get(ref) or self.fields.get(ref)
         if info is None:
             raise ToolError(f"unknown ref {ref}; call get_page_state to refresh")
-        if info.get("final_submit"):
+        loc = self._locator(ref)
+        # Check the element as it is now: a "Next" button may have become "Submit" since the last read.
+        try:
+            live = await loc.evaluate(SNAPSHOT_JS, {"review": self.mode == "review"})
+        except PlaywrightError as exc:
+            raise ToolError(f"ref {ref} is no longer on the page; call get_page_state to refresh") from exc
+        label = live.get("label") or info.get("label", "")
+        review = self.mode == "review"
+        if info.get("final_submit") or live["final"] or live["commit"]:
             raise ToolError(
-                "blocked: this looks like the button that submits the application. "
+                f"blocked: {label[:60]!r} looks like the button that submits the application. "
                 + (
                     "Submission is disabled in review mode; call finish with status ready_for_review."
-                    if self.mode == "review"
-                    else "Use submit_application for the final submit."
+                    if review
+                    else "Use submit_application for it."
                 )
             )
+        if review and live["risky"]:
+            raise ToolError(
+                f"blocked in review mode: {label[:60]!r} might submit the application (it's on the application "
+                "form and isn't a recognizable Next, Back, Add, Upload or answer button). If the form can't be "
+                "completed without it, call finish with status ready_for_review and mention it in the summary."
+            )
         pages_before = len(self.context.pages)
-        await self._locator(ref).click(timeout=8000)
+        await loc.evaluate(ALLOW_STEP_JS)
+        await loc.click(timeout=8000)
         await self.settle(6000)
         note = " (it opened a new tab, which is now active)" if len(self.context.pages) > pages_before else ""
         return f"Clicked {info.get('label', '')[:60]!r}{note}. Now at: {self.page.url}. Call get_page_state to see the page."
@@ -532,6 +581,8 @@ def format_state(state: dict) -> str:
                 line += " [disabled]"
             if b.get("final_submit"):
                 line += " [FINAL SUBMIT]"
+            elif b.get("may_submit"):
+                line += " [MAY SUBMIT]"
             lines.append(line)
     if state.get("alerts"):
         lines.append("")

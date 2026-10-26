@@ -4,6 +4,7 @@ store → notify (→ optionally queue auto-apply)."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -58,6 +59,11 @@ class Found:
     origin: str
     company_id: int | None = None
     duplicates: list[Found] = field(default_factory=list)
+
+
+def _variant(fingerprint: str, posting: JobPosting) -> str:
+    """A fingerprint for a second opening with the same company, title and location."""
+    return hashlib.sha1(f"{fingerprint}|{posting.source}:{posting.source_id}".encode()).hexdigest()
 
 
 def _chunks(items: Sequence[str], size: int = 400) -> Iterable[Sequence[str]]:
@@ -181,12 +187,18 @@ class Scanner:
 
             with self.db.session() as s:
                 known = self._existing_jobs(s, by_fingerprint)
-            new_items = [(fp, f) for fp, f in by_fingerprint.items() if fp not in known]
-
-            detail_needed = [f.posting for _, f in new_items if f.posting.needs_details]
-            if detail_needed:
-                self._progress(scan_id, f"Fetching details for {len(detail_needed)} new jobs")
-                await self._fetch_details(http, detail_needed, errors)
+            # New jobs first, then known ones still missing a description (beyond earlier caps).
+            needs = [
+                f.posting
+                for fp, f in sorted(by_fingerprint.items(), key=lambda item: item[0] in known)
+                if f.posting.needs_details and (fp not in known or not known[fp].description)
+            ]
+            if needs:
+                self._progress(scan_id, f"Fetching details for {min(len(needs), MAX_DETAIL_FETCHES)} jobs")
+                await self._fetch_details(http, needs[:MAX_DETAIL_FETCHES], errors)
+                stats["details_later"] = max(0, len(needs) - MAX_DETAIL_FETCHES)
+                # Details can change links; keep only http(s) ones.
+                by_fingerprint = {fp: f for fp, f in by_fingerprint.items() if sanitize_posting(f.posting)}
 
             self._progress(scan_id, "Saving")
             new_ids = self._store(by_fingerprint, profile, settings, terms, stats)
@@ -241,7 +253,7 @@ class Scanner:
             relevant = [p for p in postings if is_relevant(p.title, terms)]
             stats["fetched"] += len(postings)
             stats["irrelevant"] += len(postings) - len(relevant)
-            seen_by_company[company.id] = {p.source_id for p in postings}
+            seen_by_company[company.id] = {p.source_id[:200] for p in postings}
             self._record_company(
                 company.id,
                 f"{len(postings)} open job{'s' if len(postings) != 1 else ''}, {len(relevant)} matching your titles",
@@ -324,12 +336,27 @@ class Scanner:
 
     @staticmethod
     def _dedupe(found: list[Found]) -> dict[str, Found]:
-        """Collapse the same job seen in several places, keeping the richest source as primary."""
+        """Collapse the same job seen in several places, keeping the richest source as primary.
+        Openings with the same title and location on one company board stay separate jobs."""
         by_fp: dict[str, Found] = {}
+        # A stable order, so each of those openings keeps its fingerprint from scan to scan.
+        found = sorted(found, key=lambda f: (f.company_id is None, f.company_id or 0, f.posting.source_id))
         for item in found:
             p = item.posting
             fp = job_fingerprint(p.company, p.title, p.location)
             current = by_fp.get(fp)
+            while current is not None and item.company_id and current.company_id == item.company_id:
+                if current.posting.source_id == p.source_id:
+                    break  # the same posting listed twice (e.g. found by two Workday searches)
+                fp = _variant(fp, p)
+                current = by_fp.get(fp)
+            if (
+                current is not None
+                and item.company_id
+                and current.company_id == item.company_id
+                and current.posting.source_id == p.source_id
+            ):
+                continue
             if current is None:
                 by_fp[fp] = item
             elif priority(p.source) > priority(current.posting.source):
@@ -342,16 +369,30 @@ class Scanner:
 
     @staticmethod
     def _existing_jobs(session: Any, by_fp: dict[str, Found]) -> dict[str, Job]:
-        """Map fingerprint -> existing Job, matching by fingerprint or by posting URL."""
+        """Map fingerprint -> existing Job: a company-board posting by its ID on that board, then
+        anything by fingerprint, then by posting URL. Each job matches at most one posting."""
         known: dict[str, Job] = {}
-        fps = list(by_fp)
-        for chunk in _chunks(fps):
+        claimed: set[int] = set()
+
+        def claim(fp: str, job: Job) -> None:
+            if fp not in known and job.id not in claimed:
+                known[fp] = job
+                claimed.add(job.id)
+
+        on_board = {(f.company_id, f.posting.source_id[:200]): fp for fp, f in by_fp.items() if f.company_id}
+        company_ids = sorted({company_id for company_id, _ in on_board})
+        if company_ids:
+            for job in session.scalars(select(Job).where(Job.company_id.in_(company_ids))):
+                fp = on_board.get((job.company_id, job.source_job_id))
+                if fp is not None:
+                    claim(fp, job)
+        for chunk in _chunks([fp for fp in by_fp if fp not in known]):
             for job in session.scalars(select(Job).where(Job.fingerprint.in_(chunk))):
-                known[job.fingerprint] = job
+                claim(job.fingerprint, job)
         url_to_fp = {f.posting.url: fp for fp, f in by_fp.items() if fp not in known}
         for chunk in _chunks(list(url_to_fp)):
             for job in session.scalars(select(Job).where(Job.url.in_(chunk))):
-                known[url_to_fp[job.url]] = job
+                claim(url_to_fp[job.url], job)
         return known
 
     async def _fetch_details(
@@ -387,12 +428,22 @@ class Scanner:
         new_jobs: list[Job] = []
         with self.db.session() as s:
             known = self._existing_jobs(s, by_fp)
+            new_fps = [fp for fp in by_fp if fp not in known]
+            # A fingerprint can already belong to a job that matched another posting by its ID.
+            taken = {
+                fp
+                for chunk in _chunks(new_fps)
+                for fp in s.scalars(select(Job.fingerprint).where(Job.fingerprint.in_(chunk)))
+            }
             for fp, item in by_fp.items():
                 job = known.get(fp)
                 if job is not None:
-                    self._merge(job, item, now)
+                    self._merge(job, item, now, profile, settings, terms)
                     stats["updated"] += 1
                     continue
+                while fp in taken:
+                    fp = _variant(fp, item.posting)
+                taken.add(fp)
                 job = self._new_job(fp, item, profile, settings, terms, now)
                 s.add(job)
                 new_jobs.append(job)
@@ -455,12 +506,23 @@ class Scanner:
         job.score_kind = "heuristic"
         return job
 
-    def _merge(self, job: Job, item: Found, now: Any) -> None:
+    def _merge(
+        self, job: Job, item: Found, now: Any, profile: Profile, settings: AppSettings, terms: list[str]
+    ) -> None:
         p = item.posting
         job.last_seen_at = now
         job.closed_at = None
         job.sources = self._source_entries(item, now.isoformat(), job.sources)
-        if priority(p.source) > priority(job.source):
+        before = (job.description, job.salary_min, job.salary_max, job.posted_at, job.location)
+        if job.company_id is None and item.company_id:
+            job.company_id = item.company_id
+        same_board = (
+            item.company_id is not None and item.company_id == job.company_id and p.source == job.source
+        )
+        if priority(p.source) > priority(job.source) or (
+            same_board and p.source_id[:200] != job.source_job_id
+        ):
+            # A richer source, or the company reposted the job under a new ID: follow that posting.
             job.source, job.source_job_id, job.url = p.source, p.source_id[:200], p.url
             if item.company_id:
                 job.company_id = item.company_id
@@ -468,10 +530,8 @@ class Scanner:
                 job.apply_url = p.apply_url
             if p.description and len(p.description) > len(job.description or ""):
                 job.description = p.description
-                job.years_required = extract_years_required(p.description)
         if not job.description and p.description:
             job.description = p.description
-            job.years_required = extract_years_required(p.description)
         if not job.apply_url and p.apply_url:
             job.apply_url = p.apply_url
         if job.salary_min is None and job.salary_max is None and (p.salary_min or p.salary_max):
@@ -479,7 +539,23 @@ class Scanner:
             job.salary_currency, job.salary_period = p.salary_currency, p.salary_period
         if job.posted_at is None and p.posted_at:
             job.posted_at = p.posted_at
+        if not job.location and p.location:
+            job.location = p.location[:300]
         job.ats = ats_for_url(job.apply_url or job.url) or job.ats
+        if (job.description, job.salary_min, job.salary_max, job.posted_at, job.location) != before:
+            # New information (a full description asking for 10+ years, a salary...): filter and score again.
+            job.years_required = extract_years_required(job.description or "")
+            if (job.salary_min, job.salary_max) == (None, None) and (
+                parsed := parse_salary(job.description or "")
+            ):
+                job.salary_min, job.salary_max, job.salary_currency, job.salary_period = parsed
+            job.workplace = (
+                p.workplace or detect_workplace(job.title, job.location, job.description) or job.workplace
+            )
+            job.hidden_reason = hidden_reason(job, profile, settings.filters, now)
+            score, job.heuristic = heuristic_score(job, profile, terms, now)
+            if job.score_kind != "ai":
+                job.score, job.score_kind = score, "heuristic"
 
     def _mark_closed(self, seen_by_company: dict[int, set[str]]) -> int:
         """Jobs that disappeared from a company board we just read successfully have closed."""

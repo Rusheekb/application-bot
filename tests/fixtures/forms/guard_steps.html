@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Multi-step</title></head>
+<body>
+<h1>Data Engineer</h1>
+<form id="step1">
+  <div><label for="n">Full name *</label><input id="n" name="n" type="text" required></div>
+  <div><label for="e">Email *</label><input id="e" name="e" type="email" required></div>
+  <div><label for="p">Phone *</label><input id="p" name="p" type="tel" required></div>
+  <button type="submit">Next</button>
+</form>
+<form id="step2" style="display:none">
+  <div><label for="w">Why do you want to work here? *</label><textarea id="w" name="w" required></textarea></div>
+  <div id="edu">
+    <div class="edu-row"><label>School<input name="school[]" type="text"></label></div>
+  </div>
+  <button type="button" onclick="addRow()">Add another school</button>
+  <button type="submit">Submit application</button>
+</form>
+<script>
+document.getElementById('step1').addEventListener('submit', (e) => {
+  e.preventDefault();  // the step form's submit handler shows the next step
+  document.getElementById('step1').style.display = 'none';
+  document.getElementById('step2').style.display = 'block';
+});
+document.getElementById('step2').addEventListener('submit', (e) => { e.preventDefault(); window.submitted = 1; });
+function addRow() {  // clone the first row and clear it
+  const row = document.querySelector('.edu-row').cloneNode(true);
+  row.querySelectorAll('input').forEach((i) => { i.value = ''; });
+  document.getElementById('edu').appendChild(row);
+}
+</script>
+</body></html>

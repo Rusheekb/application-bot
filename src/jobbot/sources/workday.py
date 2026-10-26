@@ -34,7 +34,7 @@ async def fetch_jobs(client: httpx.AsyncClient, company: CompanyRef) -> list[Job
     terms = company.search_terms or [""]
     limit = MAX_PER_TERM if company.search_terms else MAX_UNFILTERED
     for term in terms:
-        offset = 0
+        offset = total = 0
         while offset < limit:
             data = await request_json(
                 client,
@@ -50,7 +50,9 @@ async def fetch_jobs(client: httpx.AsyncClient, company: CompanyRef) -> list[Job
                 if posting and posting.source_id not in seen:
                     seen[posting.source_id] = posting
             offset += PAGE_SIZE
-            if len(postings) < PAGE_SIZE or offset >= int(data.get("total") or 0):
+            # Workday may report the total only on the first page (later pages say 0).
+            total = total or int(data.get("total") or 0)
+            if len(postings) < PAGE_SIZE or (total and offset >= total):
                 break
     return list(seen.values())
 

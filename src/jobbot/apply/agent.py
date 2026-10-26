@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from jobbot.ai.client import LLM, AIRefused
-from jobbot.apply.browser import BrowserSession, ToolError, _is_empty
+from jobbot.apply.browser import CONFIRMATION_RE, BrowserSession, ToolError, _is_empty
 from jobbot.models import Job, utcnow
 from jobbot.text import truncate
 
@@ -283,13 +283,13 @@ class ApplyAgent:
             {"type": "text", "text": profile_text, "cache_control": {"type": "ephemeral"}},
         ]
         self.messages: list[dict[str, Any]] = [{"role": "user", "content": task}]
-        self.steps = 0
+        self.steps = 0  # browser actions in the current round (each review round gets max_steps)
         self._pending: list[dict[str, Any]] = []  # tool results owed when the conversation resumes
         self._checked_required = False
 
-    def set_mode(self, mode: str) -> None:
+    async def set_mode(self, mode: str) -> None:
         self.mode = mode
-        self.session.mode = mode
+        await self.session.set_mode(mode)
 
     def _log(self, kind: str, text: str, **extra: Any) -> None:
         entry = {
@@ -311,20 +311,35 @@ class ApplyAgent:
         content = [*self._pending, {"type": "text", "text": instruction}]
         self._pending = []
         self._checked_required = False
+        self.steps = 0
         self.messages.append({"role": "user", "content": content})
         self._log("user", instruction)
         return await self._loop()
+
+    def stopped(self, reason: str) -> AgentOutcome:
+        """The outcome when a round ends without the agent calling finish. If it had already
+        clicked submit, say so: the application may have gone through."""
+        if self.session.submitted:
+            return AgentOutcome(
+                "submitted",
+                f"The page confirmed the application was received, but then the agent stopped: {reason}",
+            )
+        if self.session.submit_attempts:
+            return AgentOutcome(
+                "failed",
+                f"{reason} The agent had already clicked submit, so check whether the application went "
+                "through (look for a confirmation email) before trying again.",
+            )
+        return AgentOutcome("failed", reason)
 
     async def _loop(self) -> AgentOutcome:
         nudged = False
         api_calls = 0
         while True:
             if self.steps >= self.max_steps:
-                return AgentOutcome(
-                    "failed", f"Stopped after {self.steps} browser actions without finishing."
-                )
+                return self.stopped(f"Stopped after {self.steps} browser actions without finishing.")
             if api_calls >= self.max_steps + 10:
-                return AgentOutcome("failed", "Stopped: too many model turns without finishing.")
+                return self.stopped("Stopped: too many model turns without finishing.")
             api_calls += 1
             try:
                 response = await self.llm.create(
@@ -337,7 +352,7 @@ class ApplyAgent:
                     thinking={"type": "adaptive", "display": "summarized"},
                 )
             except AIRefused as exc:
-                return AgentOutcome("failed", str(exc))
+                return self.stopped(str(exc))
             content = _echo_content(response.content)
             self.messages.append({"role": "assistant", "content": content})
             for block in content:
@@ -366,7 +381,7 @@ class ApplyAgent:
                 continue
             if not tool_uses:
                 if nudged:
-                    return AgentOutcome("failed", "The agent stopped without reporting an outcome.")
+                    return self.stopped("The agent stopped without reporting an outcome.")
                 nudged = True
                 self.messages.append(
                     {"role": "user", "content": "Continue with the tools. When you're done, call finish."}
@@ -374,15 +389,23 @@ class ApplyAgent:
                 continue
 
             results: list[dict[str, Any]] = []
-            finish_block = None
+            finishes = [b for b in tool_uses if b.name == "finish"]
             for block in tool_uses:
-                if block.name == "finish":
-                    finish_block = block
-                    continue
-                results.append(await self._run_tool(block))
-            if finish_block is None:
+                if block.name != "finish":
+                    results.append(await self._run_tool(block))
+            if not finishes:
                 self.messages.append({"role": "user", "content": results})
                 continue
+            *extra, finish_block = finishes  # the last finish call counts; every call needs a result
+            results += [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": b.id,
+                    "content": "Ignored: only the last finish call in a turn counts.",
+                    "is_error": True,
+                }
+                for b in extra
+            ]
 
             outcome, rejection = await self._check_finish(finish_block.input or {})
             if rejection:
@@ -417,11 +440,20 @@ class ApplyAgent:
             missing_info=[str(x) for x in args.get("missing_info") or []],
             generated_answers=[str(x) for x in args.get("generated_answers") or []],
         )
-        if status == "submitted" and not self.session.submit_attempts:
-            return (
-                outcome,
-                "You haven't submitted the application: call submit_application first, or finish with another status.",
-            )
+        if status == "submitted" and not (self.session.submit_attempts or self.session.submitted):
+            # In submit mode it may have gone through another way: a button with an unfamiliar
+            # label that turned out to submit the form.
+            confirmed = False
+            if self.mode == "submit":
+                state = await self.session.snapshot()
+                confirmed = bool(CONFIRMATION_RE.search(state.get("text", "")))
+            if confirmed:
+                self.session.submitted = True
+            else:
+                return (
+                    outcome,
+                    "You haven't submitted the application: call submit_application first, or finish with another status.",
+                )
         if status == "ready_for_review" and not self._checked_required:
             self._checked_required = True
             state = await self.session.snapshot()

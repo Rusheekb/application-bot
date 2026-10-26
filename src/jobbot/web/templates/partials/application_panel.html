@@ -61,6 +61,10 @@
           {% if live %}<button class="btn btn-ghost" hx-post="/applications/{{ run.id }}/cancel">Close browser</button>{% endif %}
         </div>
       {% elif run.status in ('failed', 'cancelled') %}
+        {% if run.steps and run.steps|selectattr("text", "equalto", "submit_application")|list %}
+          <div class="notice warn">The agent clicked submit before it stopped, so this application may have gone
+            through. Check the employer's site or your email before trying again.</div>
+        {% endif %}
         <div class="btn-row">
           <button class="btn" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "review"}'>Try again</button>
           <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Apply myself ↗</a>

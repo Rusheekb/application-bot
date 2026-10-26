@@ -154,6 +154,10 @@ Turn it on in **Settings → Auto-apply**, then use **Fill application for revie
   answers are flagged) and a screenshot, then click **Submit application**, or ask it for
   changes in plain words. The paused browser stays open for 30 minutes by default; after that,
   approving re-runs the agent with the answers you reviewed.
+- In review mode the agent can't submit: the submit button, and any other button that might
+  send a filled-in form (an "Apply" or "Done" button, or one it doesn't recognize), is blocked,
+  every click is checked against the page as it is at that moment, and the page's own scripts
+  can't submit the form either. Changes you ask for after approving need your approval again.
 - **Submit mode:** it submits once every required field is filled in, and still stops when it's
   unsure.
 - If it needs information you haven't given (say, a question about a certification), it fills in

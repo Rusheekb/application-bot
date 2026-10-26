@@ -41,10 +41,14 @@ async def send_webhook(
     if not url or not jobs:
         return
     title, body = build_message(jobs, base_url, board_url)
+    # Job titles come from the internet: don't let one ping @everyone or a Slack channel.
     if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
-        response = await client.post(url, json={"content": f"**{title}**\n{body}"[:1990]})
+        response = await client.post(
+            url, json={"content": f"**{title}**\n{body}"[:1990], "allowed_mentions": {"parse": []}}
+        )
     elif "hooks.slack.com" in url:
-        response = await client.post(url, json={"text": f"*{title}*\n{body}"})
+        text = f"*{title}*\n{body}".replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        response = await client.post(url, json={"text": text})
     elif "ntfy" in url:
         response = await client.post(
             url, content=body.encode(), headers={"Title": title, "Tags": "briefcase"}

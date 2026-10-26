@@ -18,7 +18,7 @@ from sqlalchemy import select
 from jobbot.ai.client import LLM, describe_error
 from jobbot.ai.context import application_profile_block
 from jobbot.apply.agent import AgentOutcome, ApplyAgent, task_prompt
-from jobbot.apply.browser import REVIEW_GUARD_JS, BrowserSession, answers_from_snapshot
+from jobbot.apply.browser import SUBMIT_GUARD_JS, BrowserSession, answers_from_snapshot
 from jobbot.config import Env
 from jobbot.db import Database, get_profile, get_resume, get_settings, save_profile
 from jobbot.models import ApplicationRun, Job, utcnow
@@ -27,12 +27,16 @@ from jobbot.schemas import AISettings, QAPair
 log = logging.getLogger(__name__)
 
 ACTIVE = ("queued", "running")
+_WORKING = datetime.max  # expiry of a live session while its agent works
 PAUSED = ("ready_for_review", "needs_input")
 APPROVED_MESSAGE = (
     "The candidate reviewed the filled-in application and approved submitting it. You are now in submit "
     "mode: check the form once more with get_page_state, call submit_application on the final submit "
     "button, check the result, and call finish."
 )
+
+
+REVIEW_AGAIN = " You're in review mode: don't submit; the candidate will check the result first."
 
 
 class ApplyError(Exception):
@@ -47,6 +51,9 @@ class LiveRun:
     context: Any
     expires_at: datetime
     headless: bool
+    # Started in review mode (or re-runs an approved review): changes made after an approval
+    # need a new approval.
+    review_first: bool = True
 
 
 def _safe_filename(text: str) -> str:
@@ -124,7 +131,7 @@ class ApplyManager:
         live = self.live.get(run_id)
         if live is not None:
             self._update(run_id, status="running", mode="submit")
-            live.agent.set_mode("submit")
+            await live.agent.set_mode("submit")
             self.tasks[run_id] = asyncio.create_task(self._continue(run_id, live, APPROVED_MESSAGE))
             return run_id
         # The paused browser session is gone (expired or restarted): redo it in submit mode.
@@ -133,9 +140,17 @@ class ApplyManager:
             job_id, mode="submit", trigger=trigger, parent_run_id=run_id, previous_answers=answers
         )
 
+    async def _back_to_review(self, run_id: int, live: LiveRun) -> None:
+        """An approval covers the application as the candidate saw it; after further changes it
+        needs their review again."""
+        if live.review_first and live.agent.mode != "review":
+            await live.agent.set_mode("review")
+            self._update(run_id, mode="review")
+
     async def revise(self, run_id: int, instruction: str) -> None:
         live = self._require_live(run_id)
-        mode_note = " Don't submit." if live.agent.mode == "review" else ""
+        await self._back_to_review(run_id, live)
+        mode_note = REVIEW_AGAIN if live.agent.mode == "review" else ""
         message = (
             "The candidate reviewed your work and asks for these changes:\n"
             f"{instruction.strip()}\n\nMake the changes, check the form with get_page_state, then call finish "
@@ -157,10 +172,12 @@ class ApplyManager:
                     if question.strip().lower() not in known:
                         profile.qa.append(QAPair(question=question.strip(), answer=answer))
                 save_profile(s, profile)
+        await self._back_to_review(run_id, live)
+        mode_note = REVIEW_AGAIN if live.agent.mode == "review" else ""
         lines = "\n".join(f"Q: {q}\nA: {a}" for q, a in answered.items())
         message = (
             f"The candidate answered your questions:\n{lines}\n\nUse these answers to complete the form, "
-            "check it with get_page_state, then call finish again."
+            f"check it with get_page_state, then call finish again.{mode_note}"
         )
         self._update(run_id, status="running")
         self.tasks[run_id] = asyncio.create_task(self._continue(run_id, live, message))
@@ -233,22 +250,41 @@ class ApplyManager:
     def _fail(self, run_id: int, message: str) -> None:
         self._update(run_id, status="failed", error=message, finished_at=utcnow())
 
+    def _task_done(self, run_id: int) -> None:
+        # approve()/revise() may already have started the run's next task.
+        if self.tasks.get(run_id) is asyncio.current_task():
+            del self.tasks[run_id]
+
+    def _busy(self, run_id: int) -> bool:
+        task = self.tasks.get(run_id)
+        return task is not None and not task.done()
+
+    async def _crashed(self, run_id: int, exc: Exception) -> None:
+        """A round died with an exception (an API error, say). Record what is known about the
+        application, which may already have been submitted."""
+        log.error("Apply run %s failed", run_id, exc_info=exc)
+        live = self.live.get(run_id)
+        if live is not None and (live.session.submitted or live.session.submit_attempts):
+            outcome = live.agent.stopped(f"Stopped by an error: {describe_error(exc)}.")
+            await self._finish_round(run_id, outcome, live, keep_live=False)
+            return
+        self._fail(run_id, describe_error(exc))
+        await self._close_live(run_id)
+
     async def _execute(self, run_id: int, previous_answers: list[dict] | None) -> None:
-        async with self._slots:
-            try:
+        try:
+            async with self._slots:
                 await self._run_agent(run_id, previous_answers)
-            except asyncio.CancelledError:
-                self._update(run_id, status="cancelled", finished_at=utcnow())
-                await self._close_live(run_id)
-                raise
-            except ApplyError as exc:
-                self._fail(run_id, str(exc))
-            except Exception as exc:
-                log.exception("Apply run %s failed", run_id)
-                self._fail(run_id, describe_error(exc))
-                await self._close_live(run_id)
-            finally:
-                self.tasks.pop(run_id, None)
+        except asyncio.CancelledError:
+            self._update(run_id, status="cancelled", finished_at=utcnow())
+            await self._close_live(run_id)
+            raise
+        except ApplyError as exc:
+            self._fail(run_id, str(exc))
+        except Exception as exc:
+            await self._crashed(run_id, exc)
+        finally:
+            self._task_done(run_id)
 
     async def _run_agent(self, run_id: int, previous_answers: list[dict] | None) -> None:
         with self.db.session() as s:
@@ -257,7 +293,7 @@ class ApplyManager:
             profile = get_profile(s)
             settings = get_settings(s)
             resume = get_resume(s)
-            mode, start_url = run.mode, run.start_url or job.url
+            mode, start_url, parent_run_id = run.mode, run.start_url or job.url, run.parent_run_id
             job_snapshot = Job(
                 id=job.id,
                 title=job.title,
@@ -296,8 +332,7 @@ class ApplyManager:
             browser = await self._browser(headless)
             context = await browser.new_context(viewport={"width": 1280, "height": 900}, locale="en-US")
             try:
-                if mode == "review":
-                    await context.add_init_script(REVIEW_GUARD_JS)
+                await context.add_init_script(SUBMIT_GUARD_JS)
                 page = await context.new_page()
                 try:
                     await page.goto(start_url, wait_until="domcontentloaded", timeout=45000)
@@ -323,36 +358,38 @@ class ApplyManager:
                     max_steps=settings.apply.max_steps,
                     on_step=lambda entry: self._append_step(run_id, entry),
                 )
-                live = LiveRun(run_id, agent, session, context, utcnow(), headless)
-                self.live[run_id] = live  # registered so cancel() can close it mid-run
-                outcome = await agent.start()
             except BaseException:
-                self.live.pop(run_id, None)
                 await context.close()
                 raise
         except BaseException:
             await llm.aclose()
             raise
+        review_first = mode == "review" or parent_run_id is not None
+        live = LiveRun(run_id, agent, session, context, _WORKING, headless, review_first)
+        # Registered before the agent starts, so cancel() can close it mid-run. From here on the
+        # caller closes the session (and the client) when something goes wrong.
+        self.live[run_id] = live
+        outcome = await agent.start()
         await self._finish_round(run_id, outcome, live)
 
     async def _continue(self, run_id: int, live: LiveRun, message: str) -> None:
-        async with self._slots:
-            try:
-                live.expires_at = utcnow() + timedelta(days=1)
+        live.expires_at = _WORKING
+        try:
+            async with self._slots:
                 outcome = await live.agent.resume(message)
                 await self._finish_round(run_id, outcome, live)
-            except asyncio.CancelledError:
-                self._update(run_id, status="cancelled", finished_at=utcnow())
-                await self._close_live(run_id)
-                raise
-            except Exception as exc:
-                log.exception("Apply run %s failed", run_id)
-                self._fail(run_id, describe_error(exc))
-                await self._close_live(run_id)
-            finally:
-                self.tasks.pop(run_id, None)
+        except asyncio.CancelledError:
+            self._update(run_id, status="cancelled", finished_at=utcnow())
+            await self._close_live(run_id)
+            raise
+        except Exception as exc:
+            await self._crashed(run_id, exc)
+        finally:
+            self._task_done(run_id)
 
-    async def _finish_round(self, run_id: int, outcome: AgentOutcome, live: LiveRun) -> None:
+    async def _finish_round(
+        self, run_id: int, outcome: AgentOutcome, live: LiveRun, *, keep_live: bool = True
+    ) -> None:
         session = live.session
         answers: list[dict] = []
         try:
@@ -383,7 +420,7 @@ class ApplyManager:
                 job.applied_at = now
                 job.status_changed_at = now
             minutes = settings.apply.live_session_minutes
-        keep = outcome.status in PAUSED or (outcome.status == "blocked" and not live.headless)
+        keep = keep_live and (outcome.status in PAUSED or (outcome.status == "blocked" and not live.headless))
         if keep:
             live.expires_at = utcnow() + timedelta(minutes=minutes)
             self.live[run_id] = live
@@ -396,11 +433,16 @@ class ApplyManager:
         if live is not None:
             with contextlib.suppress(Exception):
                 await live.context.close()
+            with contextlib.suppress(Exception):
+                await live.agent.llm.aclose()
 
     async def _enforce_live_limit(self) -> None:
+        """Close the paused sessions closest to expiring; never one that is working or about to."""
         while len(self.live) > self.max_live:
-            oldest = min(self.live.values(), key=lambda lr: lr.expires_at)
-            await self._close_live(oldest.run_id)
+            idle = [lr for lr in self.live.values() if not self._busy(lr.run_id)]
+            if not idle:
+                return
+            await self._close_live(min(idle, key=lambda lr: lr.expires_at).run_id)
 
     def _start_reaper(self) -> None:
         if self._reaper is None or self._reaper.done():
@@ -412,7 +454,7 @@ class ApplyManager:
             await asyncio.sleep(30)
             now = utcnow()
             for run_id, live in list(self.live.items()):
-                if live.expires_at <= now and not (run_id in self.tasks and not self.tasks[run_id].done()):
+                if live.expires_at <= now and not self._busy(run_id):
                     await self._close_live(run_id)
             if self.live or self.tasks:
                 idle_since = None

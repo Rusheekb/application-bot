@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Wizard</title></head>
+<body>
+<h1>Data Engineer</h1>
+<div id="root">
+  <div id="step1"><label for="n">Full name *</label><input id="n" type="text"><label for="e">Email *</label><input id="e" type="email"></div>
+  <div id="step2" style="display:none"><label for="w">Why us?</label><textarea id="w"></textarea></div>
+  <!-- One button whose caption changes on the last step. -->
+  <button type="button" id="primary" onclick="primary()">Next</button>
+</div>
+<script>
+let step = 1;
+function primary() {
+  if (step === 1) {
+    step = 2;
+    document.getElementById('step1').style.display = 'none';
+    document.getElementById('step2').style.display = 'block';
+    document.getElementById('primary').textContent = 'Submit application';
+    return;
+  }
+  window.submitted = (window.submitted || 0) + 1;
+  document.getElementById('root').innerHTML = '<h2>Application submitted</h2>';
+}
+</script>
+</body></html>

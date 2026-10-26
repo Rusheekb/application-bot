@@ -1,6 +1,10 @@
 // Reads the application form on the current page (one frame at a time) for the apply agent.
 // Every interactive element gets a stable `data-jobbot-ref` attribute so later actions can target it.
-(args) => {
+// Called as (options) to read a frame, or through a locator as (element, options) to check one
+// button again right before it's clicked: the page may have changed since it was last read.
+(target, options) => {
+  const element = target instanceof Element ? target : null;
+  const args = (element ? options : target) || {};
   const startRef = args.startRef || 1;
   const maxOptions = args.maxOptions || 60;
   const maxText = args.maxText || 1500;
@@ -26,12 +30,22 @@
   };
   walk(document.body || document.documentElement);
 
+  // Elements copied with cloneNode (an "Add another" row, say) carry the original's ref. Keep it
+  // on the first element only, so every ref names exactly one element.
+  const refOwners = new Map();
+  for (const el of all) {
+    const ref = el.getAttribute && el.getAttribute("data-jobbot-ref");
+    if (!ref) continue;
+    if (refOwners.has(ref)) el.removeAttribute("data-jobbot-ref");
+    else refOwners.set(ref, el);
+  }
   const refOf = (el) => {
     let ref = el.getAttribute("data-jobbot-ref");
-    if (!ref) {
+    if (!ref || (refOwners.has(ref) && refOwners.get(ref) !== el)) {
       ref = String(nextRef++);
       el.setAttribute("data-jobbot-ref", ref);
     }
+    refOwners.set(ref, el);
     return ref;
   };
 
@@ -54,6 +68,92 @@
     const root = el.getRootNode();
     return (root && root.getElementById ? root.getElementById(id) : null) || document.getElementById(id);
   };
+
+  // -- Could clicking a button submit the application? --------------------------------------
+  const BUTTONISH = "button, input[type=submit], input[type=button], input[type=image], [role=button]";
+  const buttonLabel = (b) =>
+    clean(textOf(b) || b.value || b.getAttribute("aria-label") || b.getAttribute("title") || "").slice(0, 100);
+  const STEP_WORDS = /\b(next|continue)\b/;
+  const COMMIT_WORDS = /\b(apply|finish|done|confirm|complete|send|submit|save|proceed|register|post)\b/;
+  const SAFE_WORDS = new RegExp(
+    "\\b(back|previous|prev|review|add|another|upload|attach|browse|choose|select|remove|delete|edit|change|" +
+      "replace|cancel|close|dismiss|clear|show|hide|more|less|expand|collapse|search|skip|yes|no|accept|agree|" +
+      "decline|reject|allow|got it|ok|okay|manual|manually|start|begin|view|preview|open|toggle|sign in|log in)\\b"
+  );
+  // The application's submit button: says submit/send, or is the submit button of a form that
+  // looks like an application (and isn't a step, save or upload button).
+  const submitLike = (b, label) => {
+    const t = label.toLowerCase();
+    if (/\b(submit|send)\b/.test(t) || /(complete|finish|send) (my |your )?application/.test(t)) return true;
+    const tag = b.tagName;
+    const isSubmitType =
+      (tag === "BUTTON" && (b.getAttribute("type") || "submit").toLowerCase() === "submit") ||
+      (tag === "INPUT" && (b.type || "").toLowerCase() === "submit");
+    if (isSubmitType && b.form) {
+      const form = b.form;
+      const n = form.querySelectorAll("input:not([type=hidden]), textarea, select").length;
+      if (form.querySelector("input[type=file]") || n >= 3) {
+        return !/\b(next|continue|review|save|back|previous|upload|add|attach|remove|cancel|search)\b/.test(t);
+      }
+    }
+    return false;
+  };
+  // Whether this frame holds an application form: three text fields, a file upload next to a
+  // text field, or two fields already filled in (including steps that are now hidden).
+  const holdsApplication = () => {
+    const TEXTY = "textarea, input:not([type]), input[type=text], input[type=email], input[type=tel], " +
+      "input[type=url], input[type=number], input[type=date], [contenteditable=true], [contenteditable='']";
+    let fields = 0, filled = 0, files = 0;
+    for (const el of all) {
+      if (!el.matches) continue;
+      if (el.matches("input[type=file]")) {
+        files++;
+        if (el.files && el.files.length) filled += 2;
+      } else if (el.matches(TEXTY)) {
+        if ((el.isContentEditable ? textOf(el) : el.value || "").trim()) filled++;
+        if (visible(el)) fields++;
+      }
+    }
+    return fields >= 3 || (files > 0 && fields >= 1) || filled >= 2;
+  };
+  // Toggles, tabs and dropdown openers answer or reveal things; they don't submit.
+  const toggleLike = (el) =>
+    ["aria-pressed", "aria-checked", "aria-expanded", "aria-haspopup", "aria-selected"].some((a) => el.hasAttribute(a)) ||
+    /^(radio|checkbox|switch|tab|option|menuitem|menuitemradio|menuitemcheckbox|combobox)$/.test((el.getAttribute("role") || "").toLowerCase());
+  // Answers shown as a row of short buttons: Yes / No, Remote / Hybrid / On-site.
+  const answerGroup = (el, label) => {
+    if (!label || label.length > 40) return false;
+    for (let parent = el.parentElement, depth = 0; parent && depth < 2; parent = parent.parentElement, depth++) {
+      const others = Array.from(parent.querySelectorAll(BUTTONISH)).filter((b) => b !== el && visible(b));
+      if (!others.length) continue;
+      return others.length <= 12 && others.every((b) => {
+        const t = buttonLabel(b).toLowerCase();
+        return t && t.length <= 40 && !STEP_WORDS.test(t) && !COMMIT_WORDS.test(t) && !/\b(back|previous|prev|cancel)\b/.test(t);
+      });
+    }
+    return false;
+  };
+  // final: the submit button itself. commit: on an application form, with a label like Apply,
+  // Done or Confirm. risky: commit, or any button there that isn't recognizably safe (Next, Back,
+  // Add, Upload, an answer...), because it might submit the form with a script.
+  const assess = (el, label, application) => {
+    const verdict = { final: false, commit: false, risky: false };
+    if (el.matches(CONTROL_SEL)) return verdict;
+    const href = (el.tagName === "A" && el.getAttribute("href")) || "";
+    const navigates = href.trim() && !/^\s*(#|javascript:)/i.test(href);
+    if (submitLike(el, label)) return { final: true, commit: true, risky: true };
+    const t = label.toLowerCase();
+    if (!application || navigates || !(el.matches(BUTTONISH) || el.tagName === "A") || toggleLike(el) || STEP_WORDS.test(t)) {
+      return verdict;
+    }
+    verdict.commit = COMMIT_WORDS.test(t);
+    verdict.risky = verdict.commit || !(SAFE_WORDS.test(t) || answerGroup(el, label));
+    return verdict;
+  };
+  if (element) {
+    const label = buttonLabel(element);
+    return { label, ...assess(element, label, holdsApplication()) };
+  }
 
   // Visible text inside `node`, skipping controls, buttons, links and option lists (their
   // captions are not part of a question), and any text exactly matching `exclude`.
@@ -289,28 +389,13 @@
   }
 
   // Buttons and button-like links.
-  const submitLike = (b, label) => {
-    const t = label.toLowerCase();
-    if (/\b(submit|send)\b/.test(t) || /(complete|finish|send) (my |your )?application/.test(t)) return true;
-    const tag = b.tagName;
-    const isSubmitType =
-      (tag === "BUTTON" && (b.getAttribute("type") || "submit").toLowerCase() === "submit") ||
-      (tag === "INPUT" && (b.type || "").toLowerCase() === "submit");
-    if (isSubmitType && b.form) {
-      const form = b.form;
-      const n = form.querySelectorAll("input:not([type=hidden]), textarea, select").length;
-      if (form.querySelector("input[type=file]") || n >= 3) {
-        return !/\b(next|continue|review|save|back|previous|upload|add|attach|remove|cancel|search)\b/.test(t);
-      }
-    }
-    return false;
-  };
+  const application = holdsApplication();
   let links = 0;
   for (const b of all) {
     if (!b.matches || !b.matches(BUTTON_SEL)) continue;
     if (!visible(b)) continue;
     if (b.closest("[role=listbox]")) continue;
-    const label = clean(textOf(b) || b.value || b.getAttribute("aria-label") || b.getAttribute("title") || "").slice(0, 100);
+    const label = buttonLabel(b);
     if (!label) continue;
     const isLink = b.tagName === "A" && !b.matches("[role=button]");
     if (isLink) {
@@ -320,7 +405,9 @@
       links++;
     }
     const entry = { ref: refOf(b), kind: isLink ? "link" : "button", label };
-    if (submitLike(b, label)) entry.final_submit = true;
+    const verdict = assess(b, label, application);
+    if (verdict.final) entry.final_submit = true;
+    else if (args.review ? verdict.risky : verdict.commit) entry.may_submit = true;
     if (b.getAttribute("aria-pressed") === "true" || b.getAttribute("aria-checked") === "true" ||
         /(^|[\s_-])(active|selected|is-selected|checked)([\s_-]|$)/i.test(b.className || "")) entry.pressed = true;
     if (b.disabled || b.getAttribute("aria-disabled") === "true") entry.disabled = true;

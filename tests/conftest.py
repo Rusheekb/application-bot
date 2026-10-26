@@ -20,7 +20,7 @@ def load_json(name: str):
 
 @pytest.fixture
 def env(tmp_path: Path) -> Env:
-    e = Env(data_dir=tmp_path / "data")
+    e = Env(data_dir=tmp_path / "data", allowed_hosts="testserver")
     e.ensure_dirs()
     return e
 

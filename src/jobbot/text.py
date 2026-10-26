@@ -295,6 +295,8 @@ def parse_salary(text: str | None) -> tuple[float, float, str, str] | None:
     for m in _SALARY_RE.finditer(text):
         cur, a, ak, cur2, b, bk, per = m.groups()
         low, high = _amount(a, ak), _amount(b, bk or ak)
+        if bk and not ak and low < 1000 <= high:
+            low = _amount(a, bk)  # "$120-150k" means 120k to 150k
         if high < low or low <= 0:
             continue
         currency = _CURRENCY_SYMBOLS.get(cur, cur.upper().replace("CA$", "CAD").replace("A$", "AUD"))

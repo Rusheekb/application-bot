@@ -359,6 +359,29 @@ def test_application_pages(client, db, env):
         assert s.get(Job, job_id).status == "applied"
 
 
+def test_failed_run_that_clicked_submit_warns_before_retrying(client, db):
+    job_id = add_job(db)
+    with db.session() as s:
+        steps = [{"t": "2026-10-25T10:00:00", "kind": "tool", "text": "submit_application", "detail": "[9]"}]
+        clicked = ApplicationRun(
+            job_id=job_id, mode="submit", status="failed", summary="Out of steps.", steps=steps
+        )
+        plain = ApplicationRun(job_id=job_id, mode="review", status="failed", summary="No form.", steps=[])
+        s.add_all([clicked, plain])
+        s.flush()
+        ids = clicked.id, plain.id
+    assert "may have gone" in client.get(f"/applications/{ids[0]}").text
+    assert "may have gone" not in client.get(f"/applications/{ids[1]}").text
+
+
+def test_saved_jobs_stay_in_their_tab_when_filters_hide_them(client, db):
+    job_id = add_job(db, hidden_reason="Posted 45 days ago")
+    with db.session() as s:
+        s.get(Job, job_id).status = "saved"
+    assert "Backend Engineer" in client.get("/jobs?tab=saved").text
+    assert "Backend Engineer" not in client.get("/jobs?tab=hidden").text
+
+
 def test_apply_requires_feature_enabled(client, db):
     job_id = add_job(db)
     response = client.post(f"/jobs/{job_id}/apply", data={"mode": "review"}, headers=SAME_ORIGIN)
@@ -398,13 +421,23 @@ def test_unknown_host_is_rejected(client):
 
 
 def test_password_protection(tmp_path, db):
-    env = Env(data_dir=tmp_path / "data", password="hunter2")
+    env = Env(data_dir=tmp_path / "data", password="hunter2", allowed_hosts="testserver")
     with TestClient(create_app(env, db=db, scheduler=False)) as c:
         assert c.get("/jobs").status_code == 401
         token = base64.b64encode(b"me:hunter2").decode()
         assert c.get("/jobs", headers={"Authorization": f"Basic {token}"}).status_code == 200
         wrong = base64.b64encode(b"me:nope").decode()
         assert c.get("/jobs", headers={"Authorization": f"Basic {wrong}"}).status_code == 401
+
+
+def test_local_hosts_only_and_no_framing(tmp_path, db):
+    with TestClient(create_app(Env(data_dir=tmp_path / "data"), db=db, scheduler=False)) as c:
+        assert c.get("/jobs").status_code == 400  # "testserver" is only allowed in tests
+        response = c.get("/jobs", headers={"Host": "localhost:8000"})
+        assert response.status_code == 200
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["content-security-policy"] == "frame-ancestors 'none'"
+        assert response.headers["referrer-policy"] == "same-origin"
 
 
 def test_extra_allowed_host(tmp_path, db):

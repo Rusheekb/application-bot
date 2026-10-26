@@ -134,14 +134,21 @@ def toast_headers(message: str) -> dict[str, str]:
 
 class SecurityMiddleware:
     """Host allow-list (DNS rebinding), same-origin check for state-changing requests (CSRF),
-    and optional HTTP basic auth when JOBBOT_PASSWORD is set."""
+    optional HTTP basic auth when JOBBOT_PASSWORD is set, and headers that stop other sites
+    from framing the app (clickjacking)."""
 
     SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+    HEADERS = [
+        (b"x-frame-options", b"DENY"),
+        (b"content-security-policy", b"frame-ancestors 'none'"),
+        (b"referrer-policy", b"same-origin"),
+        (b"x-content-type-options", b"nosniff"),
+    ]
 
     def __init__(self, app: Any, env: Env):
         self.app = app
         self.env = env
-        hosts = {"localhost", "127.0.0.1", "::1", "testserver"}
+        hosts = {"localhost", "127.0.0.1", "::1"}
         if env.host not in ("0.0.0.0", "::", ""):
             hosts.add(env.host.lower())
         hosts.update(h.lower() for h in env.extra_allowed_hosts)
@@ -154,6 +161,7 @@ class SecurityMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        send = self._with_headers(send)
         request = Request(scope)
         host_header = request.headers.get("host", "")
         host = (urlparse(f"//{host_header}").hostname or "").lower()
@@ -177,6 +185,17 @@ class SecurityMiddleware:
             await response(scope, receive, send)
             return
         await self.app(scope, receive, send)
+
+    def _with_headers(self, send: Any) -> Any:
+        async def wrapped(message: dict) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers") or [])
+                present = {name.lower() for name, _ in headers}
+                headers += [(name, value) for name, value in self.HEADERS if name not in present]
+                message = {**message, "headers": headers}
+            await send(message)
+
+        return wrapped
 
     def _authorized(self, request: Request) -> bool:
         header = request.headers.get("authorization", "")

@@ -1,0 +1,24 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SPA application</title></head>
+<body>
+<h1>Data Engineer</h1>
+<div id="root">
+  <div><label for="n">Full name *</label><input id="n" type="text" required></div>
+  <div><label for="e">Email *</label><input id="e" type="email" required></div>
+  <div><label for="r">Resume *</label><input id="r" type="file" required></div>
+  <div class="toolbar">
+    <span>Work preference</span>
+    <button type="button" onclick="this.setAttribute('data-picked', '1')">Remote</button>
+    <button type="button">Hybrid</button>
+    <button type="button">On-site</button>
+  </div>
+  <!-- No <form>: the final button posts with fetch (common in React apps). -->
+  <button type="button" class="btn-primary" onclick="send()">Apply</button>
+</div>
+<script>
+function send() {
+  window.submitted = (window.submitted || 0) + 1;
+  document.getElementById('root').innerHTML = '<h2>Thanks for applying!</h2>';
+}
+</script>
+</body></html>

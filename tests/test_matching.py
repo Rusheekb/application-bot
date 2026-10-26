@@ -104,6 +104,7 @@ def test_detect_seniority(title, level):
         ("The salary range is $120,000 - $150,000 per year.", (120000, 150000, "USD", "year")),
         ("Pay: $55/hr - $70/hr", (55, 70, "USD", "hour")),
         ("$140k–$180k + equity", (140000, 180000, "USD", "year")),
+        ("$120-150k DOE", (120000, 150000, "USD", "year")),
         ("€60.000 - €75.000", (60000, 75000, "EUR", "year")),
         ("£40,000 to £50,000", (40000, 50000, "GBP", "year")),
         ("Bonus of $200 - $500", None),
@@ -282,3 +283,20 @@ def test_heuristic_score_without_profile_is_neutral():
     score, breakdown = heuristic_score(make_job(), Profile(), [], NOW)
     assert 40 <= score <= 70
     assert "Add skills to your profile for better matching" in breakdown["notes"]
+
+
+@pytest.mark.parametrize(
+    "location, filters_kwargs, hidden",
+    [
+        ("Albany, NY", {"locations": ["NY"]}, False),
+        ("Sunnyvale, CA", {"locations": ["NY"]}, True),
+        ("Berlin, Germany", {"locations": ["New York", "NY"]}, True),
+        ("New York, NY", {"locations": ["New York"]}, False),
+        ("Chicago, IL", {"location_exclude": ["CA"]}, False),
+        ("San Jose, CA", {"location_exclude": ["CA"]}, True),
+    ],
+)
+def test_location_filters_match_whole_words(location, filters_kwargs, hidden):
+    job = Job(title="Engineer", company="X", location=location, description="")
+    reason = hidden_reason(job, Profile(), Filters(include_remote=False, **filters_kwargs))
+    assert bool(reason) is hidden, reason

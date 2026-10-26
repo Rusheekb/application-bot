@@ -93,14 +93,14 @@ def hidden_reason(job: Job, profile: Profile, filters: Filters, now: datetime | 
         if keyword.strip() and keyword_in_text(keyword, description):
             return f"Description mentions “{keyword.strip()}”"
 
-    loc = location.lower()
+    # Whole words, so "NY" doesn't match "Sunnyvale" and "CA" doesn't match "Chicago".
     for excluded in filters.location_exclude:
-        if excluded.strip() and excluded.strip().lower() in loc:
+        if excluded.strip() and keyword_in_text(excluded, location):
             return f"Location excluded ({location})"
     if job.workplace == "remote" and not filters.include_remote:
         return "Remote roles are turned off in your filters"
     if filters.locations and location:
-        matches_location = any(p.strip() and p.strip().lower() in loc for p in filters.locations)
+        matches_location = any(p.strip() and keyword_in_text(p, location) for p in filters.locations)
         if not matches_location and not (job.workplace == "remote" and filters.include_remote):
             return f"Location not in your list ({location})"
 

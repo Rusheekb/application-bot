@@ -39,23 +39,26 @@ def _visible():
     return or_(Job.hidden_reason.is_(None), Job.show_anyway.is_(True))
 
 
+# Filters only decide what reaches the review queue (New). A job you saved or applied to stays in
+# its tab even if a filter would hide it now.
 def _tab_filter(stmt, tab: str):
     if tab == "hidden":
-        return stmt.where(Job.hidden_reason.is_not(None), Job.show_anyway.is_(False))
+        return stmt.where(Job.status == "new", Job.hidden_reason.is_not(None), Job.show_anyway.is_(False))
     if tab == "all":
         return stmt
-    stmt = stmt.where(Job.status == tab, _visible())
     if tab == "new":
-        stmt = stmt.where(Job.closed_at.is_(None))
-    return stmt
+        return stmt.where(Job.status == "new", _visible(), Job.closed_at.is_(None))
+    return stmt.where(Job.status == tab)
 
 
 def _belongs(job: Job, tab: str) -> bool:
     if tab == "all":
         return True
     if tab == "hidden":
-        return job.is_hidden
-    return job.status == tab and not job.is_hidden and not (tab == "new" and job.closed_at)
+        return job.status == "new" and job.is_hidden
+    if tab == "new":
+        return job.status == "new" and not job.is_hidden and not job.closed_at
+    return job.status == tab
 
 
 @router.get("/")
@@ -99,9 +102,7 @@ def jobs_page(
         jobs = list(s.scalars(stmt.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)))
 
         counts = {t: 0 for t in TABS}
-        for status, n in s.execute(
-            select(Job.status, func.count(Job.id)).where(_visible()).group_by(Job.status)
-        ):
+        for status, n in s.execute(select(Job.status, func.count(Job.id)).group_by(Job.status)):
             counts[status] = n
         counts["new"] = s.scalar(_tab_filter(select(func.count(Job.id)), "new")) or 0
         counts["hidden"] = s.scalar(_tab_filter(select(func.count(Job.id)), "hidden")) or 0

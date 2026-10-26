@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Classic form</title></head>
+<body>
+<h1>Data Engineer</h1>
+<form id="f" action="/applied" method="get">
+  <div><label for="n">Full name *</label><input id="n" name="n" type="text" required></div>
+  <div><label for="e">Email *</label><input id="e" name="e" type="email" required></div>
+  <div><label for="p">Phone</label><input id="p" name="p" type="tel"></div>
+  <div><label for="r">Resume *</label><input id="r" name="r" type="file"></div>
+  <!-- Validate-then-submit: a plain button calling form.submit(), which fires no submit event. -->
+  <button type="button" onclick="document.getElementById('f').submit()">Absenden</button>
+</form>
+</body></html>
