@@ -1,0 +1,51 @@
+{
+  "_help": "Config for the hosted job board. Replace the example values with yours, then save the whole file as the JOBBOT_CONFIG repository secret. Companies can be any careers-page or job-board URL. Search sources: linkedin, indeed, glassdoor, zip_recruiter, google, remotive, remoteok, adzuna, jsearch (the last two need their API key secrets). See README → Hosted job board.",
+  "profile": {
+    "current_title": "Software Engineer",
+    "years_experience": 3,
+    "target_titles": ["Software Engineer", "Backend Engineer", "Python Developer"],
+    "skills": ["Python", "Django", "PostgreSQL", "AWS", "Docker", "REST APIs", "SQL"],
+    "summary": "Backend engineer with 3 years of experience building Python web services and data pipelines.",
+    "city": "Austin",
+    "state": "TX",
+    "country": "United States",
+    "work_authorization": "Authorized to work in the US",
+    "requires_sponsorship": false,
+    "security_clearance": "",
+    "workplace_preferences": ["remote", "hybrid", "onsite"],
+    "desired_salary": 120000,
+    "salary_currency": "USD"
+  },
+  "settings": {
+    "filters": {
+      "title_exclude": ["senior", "staff", "principal", "lead", "manager", "director"],
+      "locations": ["Austin", "TX", "Texas"],
+      "include_remote": true,
+      "min_salary": 90000,
+      "max_years_gap": 2,
+      "max_age_days": 30,
+      "hide_no_sponsorship": true,
+      "hide_clearance_required": true
+    },
+    "ai": {
+      "model": "claude-haiku-5-5",
+      "max_scores_per_scan": 15
+    },
+    "notify": {
+      "webhook_url": "",
+      "min_score": 75
+    },
+    "jobspy_country": "usa",
+    "jobspy_hours_old": 72
+  },
+  "companies": [
+    "https://boards.greenhouse.io/stripe",
+    "https://jobs.lever.co/palantir",
+    { "name": "OpenAI", "url": "https://jobs.ashbyhq.com/openai" }
+  ],
+  "searches": [
+    { "keywords": "backend engineer", "location": "Austin, TX", "sources": ["linkedin", "indeed"] },
+    { "keywords": "python developer", "remote_only": true, "sources": ["linkedin", "remotive", "remoteok"] }
+  ],
+  "resume_text": "Optional: paste the plain text of your resume. It's only used for Claude's fit analysis, if you add an ANTHROPIC_API_KEY secret."
+}

@@ -259,6 +259,49 @@ def cmd_apply(args: argparse.Namespace, env: Env) -> int:
     return asyncio.run(run())
 
 
+def cmd_publish(args: argparse.Namespace, env: Env) -> int:
+    import os
+    from pathlib import Path
+
+    from jobbot.publish import PublishError, publish
+
+    if not args.verbose:
+        # The workflow log of a public repository is public, and library messages can include
+        # search terms or company names. Problems are shown on the (encrypted) board instead.
+        logging.disable(logging.CRITICAL)
+    try:
+        return asyncio.run(
+            publish(
+                env,
+                Path(args.out),
+                Path(args.state),
+                os.environ.get("JOBBOT_CONFIG"),
+                os.environ.get("JOBBOT_PAGE_PASSWORD"),
+                board_url=os.environ.get("JOBBOT_BOARD_URL", ""),
+            )
+        )
+    except PublishError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+def cmd_export_config(args: argparse.Namespace, env: Env) -> int:
+    import json
+
+    from jobbot.publish import GITHUB_SECRET_LIMIT, encode_config, export_config
+
+    config = export_config(_db(env))
+    text = json.dumps(config, indent=2, ensure_ascii=False) if args.json else encode_config(config)
+    print(text)
+    if len(text.encode()) > GITHUB_SECRET_LIMIT:
+        print(
+            f"Warning: this is {len(text.encode()) // 1024} KB, over GitHub's 48 KB limit for secrets. "
+            "Shorten the resume text or drop --json.",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="jobbot", description="Find jobs you can realistically land, and apply faster."
@@ -298,6 +341,22 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--submit", action="store_true", help="submit without asking")
     p.add_argument("--headed", action="store_true", help="show the browser window")
 
+    p = sub.add_parser(
+        "publish",
+        help="scan and write the encrypted job board for GitHub Pages "
+        "(reads JOBBOT_CONFIG and JOBBOT_PAGE_PASSWORD from the environment)",
+    )
+    p.add_argument("--out", default="site", help="directory to write the site to")
+    p.add_argument(
+        "--state", default=".jobbot-state/state.json", help="encrypted state file to restore and save"
+    )
+    p.add_argument("--verbose", action="store_true", help="show library logs (may include search terms)")
+
+    p = sub.add_parser(
+        "export-config", help="print your setup for the JOBBOT_CONFIG secret of the hosted board"
+    )
+    p.add_argument("--json", action="store_true", help="print readable JSON instead of the compact form")
+
     args = parser.parse_args(argv)
     env = get_env()
     logging.basicConfig(level=env.log_level.upper(), format="%(levelname)s %(name)s: %(message)s")
@@ -313,5 +372,7 @@ def main(argv: list[str] | None = None) -> None:
         "check-company": cmd_check_company,
         "add-search": cmd_add_search,
         "apply": cmd_apply,
+        "publish": cmd_publish,
+        "export-config": cmd_export_config,
     }
     sys.exit(handlers[command](args, env))

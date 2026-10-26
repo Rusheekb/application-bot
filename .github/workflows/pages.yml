@@ -1,0 +1,70 @@
+# Scans for jobs on a schedule and publishes your encrypted job board to GitHub Pages.
+# Setup: "Hosted job board (GitHub Pages)" in the README. Until the JOBBOT_CONFIG and
+# JOBBOT_PAGE_PASSWORD secrets exist, it publishes a page with the setup steps.
+name: Job board
+
+on:
+  schedule:
+    - cron: "17 */6 * * *" # every 6 hours (GitHub may start scheduled runs a little late)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: job-board
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install jobbot
+        run: pip install ".[scrapers,pages]"
+      # The job history is kept between runs in the Actions cache, encrypted with your passphrase.
+      - name: Restore the job history
+        uses: actions/cache/restore@v4
+        with:
+          path: .jobbot-state
+          key: jobbot-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: jobbot-state-
+      # This log is public for public repositories, so `jobbot publish` only prints counts.
+      - name: Scan and build the board
+        run: jobbot publish --out site --state .jobbot-state/state.json
+        env:
+          JOBBOT_CONFIG: ${{ secrets.JOBBOT_CONFIG }}
+          JOBBOT_PAGE_PASSWORD: ${{ secrets.JOBBOT_PAGE_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
+          JOBBOT_DATA_DIR: ${{ runner.temp }}/jobbot
+      - name: Save the job history
+        if: hashFiles('.jobbot-state/state.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: .jobbot-state
+          key: jobbot-state-${{ github.run_id }}-${{ github.run_attempt }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

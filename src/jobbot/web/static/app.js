@@ -62,6 +62,23 @@
     if (message && !window.confirm(message)) e.preventDefault();
   });
 
+  // --- Copy buttons (data-copy names the element whose text to copy) ---------------------
+  document.addEventListener("click", async (e) => {
+    const button = e.target.closest && e.target.closest("[data-copy]");
+    if (!button) return;
+    const source = document.getElementById(button.dataset.copy);
+    if (!source) return;
+    try {
+      await navigator.clipboard.writeText(source.value || source.textContent);
+      showToast("Copied");
+    } catch (err) {
+      const details = source.closest("details");
+      if (details) details.open = true;
+      source.select();
+      showToast("Press Ctrl+C (⌘C on a Mac) to copy");
+    }
+  });
+
   // --- Repeatable rows (education, saved answers) ----------------------------------------
   document.addEventListener("click", (e) => {
     const add = e.target.closest && e.target.closest("[data-add-row]");

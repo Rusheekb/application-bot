@@ -304,6 +304,23 @@ def test_settings_save(client, db):
     assert "Integrations" in client.get("/settings").text
 
 
+def test_hosted_board_config_export(client, db):
+    from jobbot.publish import decode_config
+
+    with db.session() as s:
+        save_profile(s, Profile(first_name="Jane", target_titles=["Backend Engineer"]))
+        s.add(Company(name="Acme", ats="greenhouse", slug="acme"))
+    page = client.get("/settings")
+    assert "Hosted job board" in page.text and 'id="hosted-config"' in page.text
+    response = client.get("/settings/hosted-config")
+    assert response.headers["content-disposition"] == 'attachment; filename="jobbot-config.txt"'
+    assert response.headers["cache-control"] == "no-store"
+    config = decode_config(response.text)
+    assert config["profile"]["target_titles"] == ["Backend Engineer"]
+    assert config["companies"][0]["slug"] == "acme"
+    assert response.text in page.text
+
+
 def test_application_pages(client, db, env):
     job_id = add_job(db)
     with db.session() as s:

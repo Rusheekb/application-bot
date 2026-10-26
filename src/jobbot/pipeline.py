@@ -80,6 +80,7 @@ class Scanner:
         llm: LLM | None = None,
         jobspy_search: JobSpySearch | None = None,
         on_auto_apply: AutoApplyHook | None = None,
+        board_url: str | None = None,
     ):
         self.db = db
         self.env = env
@@ -87,6 +88,8 @@ class Scanner:
         self.llm = llm
         self.jobspy_search = jobspy_search or jobspy_source.search
         self.on_auto_apply = on_auto_apply
+        # Set for the hosted board: notifications then link to postings and the board, not the app.
+        self.board_url = board_url
 
     # -- bookkeeping -----------------------------------------------------------------------
 
@@ -559,9 +562,12 @@ class Scanner:
         jobs.sort(key=lambda j: j.score or 0, reverse=True)
         if not jobs:
             return
-        base_url = self.env.base_url or f"http://{self.env.host}:{self.env.port}"
+        if self.board_url is not None:
+            base_url, board_url = "", self.board_url
+        else:
+            base_url, board_url = self.env.base_url or f"http://{self.env.host}:{self.env.port}", ""
         try:
-            await send_webhook(http, settings.notify.webhook_url, jobs, base_url)
+            await send_webhook(http, settings.notify.webhook_url, jobs, base_url, board_url)
             stats["notified"] = len(jobs)
         except httpx.HTTPError as exc:
             log.warning("Notification failed: %s", exc)

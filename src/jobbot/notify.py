@@ -14,28 +14,33 @@ log = logging.getLogger(__name__)
 
 
 def _job_line(job: Job, base_url: str) -> str:
+    """One line per job, linking to the job in the web app, or to the posting without a base URL."""
     bits = [f"{job.score}" if job.score is not None else "–", f"{job.title} @ {job.company}"]
     if job.location:
         bits.append(job.location)
     salary = format_salary(job.salary_min, job.salary_max, job.salary_currency, job.salary_period)
     if salary:
         bits.append(salary)
-    link = f"{base_url.rstrip('/')}/jobs/{job.id}" if base_url else job.url
+    link = f"{base_url.rstrip('/')}/jobs/{job.id}" if base_url else (job.apply_url or job.url)
     return f"• {' · '.join(bits)}\n  {link}"
 
 
-def build_message(jobs: Sequence[Job], base_url: str) -> tuple[str, str]:
+def build_message(jobs: Sequence[Job], base_url: str, board_url: str = "") -> tuple[str, str]:
     title = f"{len(jobs)} new job match{'es' if len(jobs) != 1 else ''}"
     lines = [_job_line(j, base_url) for j in jobs[:10]]
     if len(jobs) > 10:
         lines.append(f"…and {len(jobs) - 10} more")
+    if board_url:
+        lines.append(f"Your job board: {board_url}")
     return title, "\n".join(lines)
 
 
-async def send_webhook(client: httpx.AsyncClient, url: str, jobs: Sequence[Job], base_url: str = "") -> None:
+async def send_webhook(
+    client: httpx.AsyncClient, url: str, jobs: Sequence[Job], base_url: str = "", board_url: str = ""
+) -> None:
     if not url or not jobs:
         return
-    title, body = build_message(jobs, base_url)
+    title, body = build_message(jobs, base_url, board_url)
     if "discord.com/api/webhooks" in url or "discordapp.com/api/webhooks" in url:
         response = await client.post(url, json={"content": f"**{title}**\n{body}"[:1990]})
     elif "hooks.slack.com" in url:

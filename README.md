@@ -31,6 +31,9 @@ to quickly.
   from your profile, uploads your resume, answers screening questions from your saved answers,
   and **stops for your review** before submitting (or submits on its own if you choose).
 - **Notifications** to Discord, Slack, ntfy or any webhook when strong matches appear.
+- **A free hosted job board (optional)**: GitHub Actions scans on a schedule and publishes your
+  matches to an encrypted page on GitHub Pages, so you can review jobs from your phone without
+  keeping a computer on.
 
 ## Quick start
 
@@ -59,6 +62,54 @@ Open http://localhost:8000 and:
 
 Minimal install without the optional extras: `pip install -e .` (company boards and API sources
 only; no LinkedIn/Indeed scraping, no auto-apply).
+
+## Hosted job board (GitHub Pages)
+
+If you'd rather not keep a computer running, the *Job board* workflow
+(`.github/workflows/pages.yml`) scans every 6 hours on GitHub's servers and publishes your
+matches as a page on GitHub Pages. It costs nothing: Actions and Pages are free for public
+repositories, and without an Anthropic API key jobs get the built-in estimated score.
+
+- **Private, even though Pages sites are public.** The page is encrypted with a passphrase only you
+  know (AES-256-GCM, key derived with PBKDF2-SHA256, 600,000 iterations) and decrypted in your
+  browser. The job history kept between runs (in the Actions cache) is encrypted the same way, and
+  the workflow log, which anyone can read on a public repository, only shows counts.
+- **Same engine as the app**: the same sources, filters and scoring, with the best matches first,
+  a *Hidden by filters* tab, and New badges for jobs found since your last visit.
+- **Triage in the browser**: save, mark applied or dismiss (keyboard shortcuts work). These choices
+  are stored in that browser only. Cover letters, notes and auto-apply stay in the local app.
+
+Setup:
+
+1. In the repository on GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**.
+2. Write your config, either:
+   - from the local app: **Settings → Hosted job board → Copy config** (or `jobbot export-config`), or
+   - by hand, starting from [`examples/jobbot-config.example.json`](examples/jobbot-config.example.json).
+     Companies can be any careers-page or job-board URL.
+3. In **Settings → Secrets and variables → Actions**, add two repository secrets:
+   - `JOBBOT_CONFIG`: the config from step 2 (the compact `jobbot1:...` text or plain JSON).
+   - `JOBBOT_PAGE_PASSWORD`: a long passphrase, at least 12 characters (four or five random words
+     work well). Anyone can download the encrypted page and try passphrases offline, so don't
+     reuse a short password.
+
+   Optional: `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` (free), `JSEARCH_API_KEY` (free tier), and
+   `ANTHROPIC_API_KEY` (paid) for Claude's read on your interview chances.
+4. Open **Actions → Job board → Run workflow**. When it finishes, your board is at
+   `https://<your-username>.github.io/<repository>/`. Unlock it with your passphrase; tick
+   *Remember on this device* on your own phone or laptop to skip that next time.
+
+Good to know:
+
+- To change what it looks for, update the `JOBBOT_CONFIG` secret. The next run picks it up and
+  re-applies your filters to the jobs it already found.
+- Change the schedule with the `cron` line in `.github/workflows/pages.yml`.
+- Changing the passphrase starts a new job history (the old one can't be decrypted anymore).
+- LinkedIn and Indeed often block requests from cloud servers like GitHub's. Company job boards,
+  Remotive, Remote OK, Adzuna and JSearch are more dependable there. Any problems are listed at
+  the top of the board.
+- A webhook in `settings.notify` works here too; its messages link straight to the postings.
+- GitHub pauses scheduled workflows in public repositories after 60 days without any commits.
+  If the board stops updating, re-enable the workflow from the Actions tab.
 
 ## How it finds jobs
 
@@ -134,6 +185,8 @@ jobbot add-company https://jobs.lever.co/acme [--name Acme]
 jobbot check-company https://boards.greenhouse.io/acme   # fetch and preview, saves nothing
 jobbot add-search "backend engineer" --location "New York, NY" --sources linkedin,indeed
 jobbot apply JOB_ID [--submit] [--headed]             # run the apply agent in the terminal
+jobbot export-config [--json]                         # your setup, for the hosted board's JOBBOT_CONFIG
+jobbot publish [--out site] [--state FILE]            # scan and write the encrypted board (used by the workflow)
 ```
 
 To scan on a schedule without keeping the web UI running, call `jobbot scan` from cron or a
@@ -152,8 +205,8 @@ container runs the browser headless.
 
 ## Costs
 
-The app itself is free. Claude usage is billed by Anthropic per token, and the defaults keep it
-modest:
+The app and the hosted job board are free, and both work without an Anthropic API key. Claude
+usage is billed by Anthropic per token, and the defaults keep it modest:
 
 - Fit analysis uses `claude-opus-5-5` at low effort, caches your profile and resume across all
   jobs in a scan, and is capped at 25 jobs per scan. Each scan's approximate cost appears in
@@ -166,7 +219,8 @@ modest:
 ## Privacy and security
 
 - Everything is stored locally in `JOBBOT_DATA_DIR`: a SQLite database, your resume and
-  screenshots.
+  screenshots. The hosted board keeps your config in GitHub secrets and everything else encrypted
+  (see above).
 - Fit analysis sends Claude your profile summary and resume, but not your contact details. The
   apply agent sends the details it needs to fill in forms.
 - The web UI binds to localhost by default and rejects requests for unknown hostnames (DNS
@@ -200,6 +254,7 @@ src/jobbot/
   ai/           Claude client, fit analysis, resume parsing, cover letters
   apply/        auto-apply agent (snapshot.js, browser.py, agent.py, manager.py)
   web/          FastAPI app, templates, static assets
+  publish.py    hosted job board: config sync, encryption, static page (board/)
   cli.py        command line
 ```
 

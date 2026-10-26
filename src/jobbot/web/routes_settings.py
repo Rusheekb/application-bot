@@ -15,6 +15,7 @@ from jobbot.db import get_settings, save_settings
 from jobbot.models import Job
 from jobbot.notify import send_webhook
 from jobbot.pipeline import rescore_all
+from jobbot.publish import encode_config, export_config
 from jobbot.schemas import AISettings, ApplySettings, AppSettings, NotifySettings
 from jobbot.sources import adzuna, jobspy_source, jsearch
 from jobbot.sources.adzuna import COUNTRIES
@@ -66,6 +67,7 @@ def settings_page(request: Request, msg: str = "", error: str = "") -> Response:
     env = request.app.state.env
     with get_db(request).session() as s:
         settings = get_settings(s)
+    hosted_config = encode_config(export_config(get_db(request)))
     return render(
         request,
         "settings.html",
@@ -76,8 +78,23 @@ def settings_page(request: Request, msg: str = "", error: str = "") -> Response:
         models=MODEL_CHOICES,
         efforts=EFFORTS,
         countries=sorted({k for k in COUNTRIES if len(k) > 2} | {"usa", "uk"}),
+        hosted_config=hosted_config,
+        hosted_size=round(len(hosted_config) / 1024, 1),
         message=msg,
         error=error,
+    )
+
+
+@router.get("/settings/hosted-config")
+def hosted_config_file(request: Request) -> Response:
+    """The JOBBOT_CONFIG secret for the hosted job board, as a download."""
+    return Response(
+        encode_config(export_config(get_db(request))),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="jobbot-config.txt"',
+            "Cache-Control": "no-store",
+        },
     )
 
 
