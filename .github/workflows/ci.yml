@@ -18,7 +18,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,apply]"
+          pip install -e ".[dev,apply,pages]"
           python -m playwright install --with-deps chromium
       - name: Lint
         run: |
