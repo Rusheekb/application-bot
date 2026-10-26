@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src https://api.github.com; base-uri 'none'; form-action 'none'">
 <title>Job board · jobbot</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>💼</text></svg>">
 <style>
@@ -39,8 +39,9 @@ button:hover, .btn:hover { background: var(--surface-2); text-decoration: none; 
 .btn-primary:hover { background: var(--accent); filter: brightness(1.08); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
 .btn-sm { padding: .25rem .55rem; font-size: .8rem; }
-input, select { font: inherit; font-size: .92rem; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
-input:focus, select:focus, button:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input, select, textarea { font: inherit; font-size: .92rem; padding: .45rem .6rem; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); }
+input:focus, select:focus, textarea:focus, button:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type=checkbox] { padding: 0; width: 1rem; height: 1rem; accent-color: var(--accent); }
 .topbar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 1rem; padding: .6rem 1.25rem; background: var(--surface); border-bottom: 1px solid var(--border); }
 .brand { font-weight: 700; font-size: 1.05rem; }
 .brand span { color: var(--accent); }
@@ -97,12 +98,46 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
 .error { color: var(--bad); font-size: .88rem; min-height: 1.2em; }
 .spinner { display: inline-block; width: .9em; height: .9em; border-radius: 50%; border: 2px solid var(--accent-soft); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.notice.info { background: var(--accent-soft); }
+.settings { max-width: 780px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.settings fieldset { border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); padding: .9rem 1.1rem 1rem; margin: 0 0 1rem; min-width: 0; }
+.settings legend { float: left; width: 100%; padding: 0; margin-bottom: .3rem; font-weight: 650; }
+.settings legend + * { clear: both; }
+.field { display: flex; flex-direction: column; gap: .25rem; margin: .7rem 0 0; }
+.field > label, .field > .label { font-size: .88rem; font-weight: 500; }
+.field input:not([type=checkbox]), .field textarea, .rows input:not([type=checkbox]), .settings textarea { width: 100%; }
+.settings textarea { resize: vertical; line-height: 1.45; }
+.hint { font-size: .83rem; color: var(--muted); margin: .25rem 0 0; }
+ol.hint { padding-left: 1.2rem; }
+.check { display: flex; gap: .5rem; align-items: center; font-size: .9rem; }
+label.check.field { flex-direction: row; font-weight: 400; }
+.choices, .sites { display: flex; flex-wrap: wrap; gap: .3rem 1rem; }
+.rows { display: flex; flex-direction: column; gap: .5rem; margin: .7rem 0; }
+.row.company { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: .4rem; }
+.row.search { border: 1px solid var(--border); border-radius: 8px; padding: .6rem; background: var(--surface-2); }
+.row-main { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) auto auto; gap: .4rem; align-items: center; }
+.sites { margin-top: .5rem; }
+.sites .check { font-size: .84rem; }
+.btn-row, .inline { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+.inline input { flex: 1 1 200px; }
+.mono { font-family: var(--mono); font-size: .8rem !important; }
+.link { border: 0; background: none; padding: 0; color: var(--accent-text); font-size: inherit; font-weight: inherit; }
+.link:hover { background: none; text-decoration: underline; }
+.save-bar { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; padding: .75rem 0; background: var(--bg); border-top: 1px solid var(--border); }
+.msg { font-size: .9rem; flex: 1 1 260px; }
+.msg.good { color: var(--good); }
+.msg.bad { color: var(--bad); }
 [hidden] { display: none !important; }
 @media (max-width: 760px) {
   .job-row { grid-template-columns: 46px minmax(0, 1fr); }
   .actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; }
   .details { grid-template-columns: 1fr; }
   .topbar { flex-wrap: wrap; }
+  .row.company, .row-main { grid-template-columns: minmax(0, 1fr) auto; }
+  .row.company { border: 1px solid var(--border); border-radius: 8px; padding: .5rem; background: var(--surface-2); }
+  .row.company input[type=url] { grid-column: 1 / -1; grid-row: 2; }
+  .row-main input:not([type=checkbox]) { grid-column: 1 / -1; }
 }
 </style>
 </head>
@@ -127,25 +162,30 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     <div class="brand">job<span>bot</span></div>
     <span class="spacer"></span>
     <span class="updated" id="updated"></span>
+    <button class="btn-sm" id="settings-button" aria-pressed="false" hidden>Settings</button>
     <button class="btn-sm" id="lock-button" title="Forget the key on this device and lock">Lock</button>
   </header>
   <main>
+    <div id="banner"></div>
     <div id="errors"></div>
-    <h1>Jobs</h1>
-    <p class="muted" id="subtitle" style="margin:0"></p>
-    <nav class="tabs" id="tabs" aria-label="Job status"></nav>
-    <div class="filters">
-      <input type="search" id="search" placeholder="Search title, company, location" aria-label="Search">
-      <select id="min-score" aria-label="Minimum score">
-        <option value="0">Any score</option><option value="40">40+</option><option value="60">60+</option>
-        <option value="70">70+</option><option value="80">80+</option>
-      </select>
-      <select id="sort" aria-label="Sort">
-        <option value="best">Best match</option><option value="newest">Newest posting</option><option value="found">Recently found</option>
-      </select>
-    </div>
-    <div class="list" id="list"></div>
-    <p class="kbd">Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> details · <kbd>s</kbd> save · <kbd>a</kbd> applied · <kbd>d</kbd> dismiss · <kbd>o</kbd> open posting. Your choices are saved in this browser only.</p>
+    <section id="jobs-view">
+      <h1>Jobs</h1>
+      <p class="muted" id="subtitle" style="margin:0"></p>
+      <nav class="tabs" id="tabs" aria-label="Job status"></nav>
+      <div class="filters">
+        <input type="search" id="search" placeholder="Search title, company, location" aria-label="Search">
+        <select id="min-score" aria-label="Minimum score">
+          <option value="0">Any score</option><option value="40">40+</option><option value="60">60+</option>
+          <option value="70">70+</option><option value="80">80+</option>
+        </select>
+        <select id="sort" aria-label="Sort">
+          <option value="best">Best match</option><option value="newest">Newest posting</option><option value="found">Recently found</option>
+        </select>
+      </div>
+      <div class="list" id="list"></div>
+      <p class="kbd">Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> details · <kbd>s</kbd> save · <kbd>a</kbd> applied · <kbd>d</kbd> dismiss · <kbd>o</kbd> open posting. Your choices are saved in this browser only.</p>
+    </section>
+    <section id="settings-view" class="settings" hidden></section>
   </main>
 </div>
 
@@ -157,44 +197,62 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
   const KEY_STORE = `jobbot:key:${SITE}`;
   const STATUS_STORE = `jobbot:status:${SITE}`;
   const SEEN_STORE = `jobbot:seen:${SITE}`;
+  const TOKEN_STORE = `jobbot:token:${SITE}`;
+  const PENDING_STORE = `jobbot:pending:${SITE}`;
+  const HOUR = 3600 * 1000;
   const LIKELIHOOD = { high: "High chance", medium: "Decent chance", low: "Long shot", very_low: "Very unlikely" };
   const SENIORITY = { under: "role is above your level", match: "good match", over: "you may be overqualified", unclear: "unclear" };
   const TABS = [["review", "To review"], ["saved", "Saved"], ["applied", "Applied"], ["dismissed", "Dismissed"], ["hidden", "Hidden by filters"], ["all", "All"]];
 
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  function toB64(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
   const store = {
     get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } },
     set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* storage unavailable */ } },
     remove(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } },
   };
 
-  async function deriveKey(passphrase) {
+  // --- encryption: the format `jobbot publish` writes (AES-256-GCM, key from PBKDF2-SHA256) ---
+  async function deriveKey(passphrase, salt = envelope.salt, iterations = envelope.iterations) {
+    if (!(iterations >= 100000 && iterations <= 10000000)) throw new Error("unexpected key settings");
     const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
     return crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt: b64(envelope.salt), iterations: envelope.iterations, hash: "SHA-256" },
-      base, { name: "AES-GCM", length: 256 }, true, ["decrypt"]);
+      { name: "PBKDF2", salt: b64(salt), iterations, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
   }
-  async function decryptWith(key) {
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(envelope.iv) }, key, b64(envelope.data));
-    if (envelope.compression !== "gzip") return JSON.parse(new TextDecoder().decode(plain));
-    const stream = new Blob([plain]).stream().pipeThrough(new DecompressionStream("gzip"));
-    return JSON.parse(await new Response(stream).text());
+  async function gunzip(bytes) {
+    return new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+  }
+  async function unseal(sealed, key) {
+    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(sealed.iv) }, key, b64(sealed.data));
+    return JSON.parse(sealed.compression === "gzip" ? await gunzip(plain) : new TextDecoder().decode(plain));
+  }
+  async function seal(value, key) {
+    const packed = await new Response(new Blob([JSON.stringify(value)]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, packed));
+    return { v: 1, kdf: envelope.kdf, iterations: envelope.iterations, salt: envelope.salt, compression: "gzip", iv: toB64(iv), data: toB64(data) };
   }
 
   // --- unlock -------------------------------------------------------------------------------
   const form = document.getElementById("unlock-form");
   const errorEl = document.getElementById("unlock-error");
   const button = document.getElementById("unlock-button");
+  const supported = () => window.crypto && crypto.subtle && window.DecompressionStream;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!window.crypto || !crypto.subtle || !window.DecompressionStream) { errorEl.textContent = "This browser can't open the board. Use an up-to-date browser over HTTPS."; return; }
+    if (!supported()) { errorEl.textContent = "This browser can't open the board. Use an up-to-date browser over HTTPS."; return; }
     errorEl.textContent = "";
     button.disabled = true;
     button.textContent = "Unlocking…";
     let key, payload;
     try {
       key = await deriveKey(document.getElementById("passphrase").value);
-      payload = await decryptWith(key);
+      payload = await unseal(envelope, key);
     } catch (err) {
       errorEl.textContent = "That passphrase didn't work.";
     }
@@ -202,9 +260,9 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
       if (payload) {
         if (document.getElementById("remember").checked) {
           const raw = new Uint8Array(await crypto.subtle.exportKey("raw", key));
-          store.set(KEY_STORE, btoa(String.fromCharCode(...raw)));
+          store.set(KEY_STORE, toB64(raw));
         }
-        start(payload);
+        await start(payload, key);
       }
     } catch (err) {
       errorEl.textContent = `Unlocked, but the board couldn't be shown: ${err.message || err}`;
@@ -217,16 +275,16 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
 
   (async () => {
     const saved = store.get(KEY_STORE, null);
-    if (!saved || !window.crypto || !crypto.subtle || !window.DecompressionStream) return;
-    let payload;
+    if (!saved || !supported()) return;
+    let key, payload;
     try {
-      const key = await crypto.subtle.importKey("raw", b64(saved), "AES-GCM", false, ["decrypt"]);
-      payload = await decryptWith(key);
+      key = await crypto.subtle.importKey("raw", b64(saved), "AES-GCM", false, ["encrypt", "decrypt"]);
+      payload = await unseal(envelope, key);
     } catch (err) {
       store.remove(KEY_STORE);  // the passphrase changed since it was remembered
       return;
     }
-    start(payload);
+    start(payload, key).catch((err) => { errorEl.textContent = `The board couldn't be shown: ${err.message || err}`; });
   })();
 
   // --- helpers ------------------------------------------------------------------------------
@@ -245,10 +303,12 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     return node;
   }
   const safeUrl = (u) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : null);
+  const external = (href, text) => el("a", { href, target: "_blank", rel: "noopener noreferrer" }, text);
   function ago(iso) {
     if (!iso) return "";
     const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
-    if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m ago`;
+    if (s < 60) return "just now";
+    if (s < 3600) return `${Math.round(s / 60)}m ago`;
     if (s < 86400) return `${Math.round(s / 3600)}h ago`;
     const d = Math.round(s / 86400);
     return d < 60 ? `${d}d ago` : `${Math.round(d / 30)}mo ago`;
@@ -257,13 +317,38 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
   const band = (score) => (score == null ? "" : score >= 80 ? "high" : score >= 60 ? "medium" : score >= 40 ? "low" : "poor");
 
   // --- app ----------------------------------------------------------------------------------
-  let data = null, tab = "review", selected = -1, expanded = new Set();
+  let data = null, boardKey = null, view = "jobs", tab = "review", selected = -1, expanded = new Set();
   let statuses = store.get(STATUS_STORE, {});
   let seenBefore = new Set(store.get(SEEN_STORE, []));
   const firstVisit = seenBefore.size === 0;
+  // Settings: `meta` is what the scan sent (your settings, their defaults, where to save them).
+  let meta = null;
+  let current = {};        // the settings Settings opens with
+  let knownSha = null;     // the version of the saved settings file this page knows about
+  let savedAt = null;      // when settings were last saved here, until the board catches up
+  let githubToken = null, tokenSaved = false;
 
-  function start(payload) {
+  async function start(payload, key) {
     data = payload;
+    boardKey = key;
+    meta = data.settings || null;  // boards published before Settings existed don't have it
+    if (meta) {
+      current = meta.config || {};
+      knownSha = meta.sha || null;
+      // After a save, the board shows the old settings until the scan it started finishes.
+      const pending = store.get(PENDING_STORE, null);
+      if (pending && pending.sha !== meta.sha && time(data.generated) < pending.savedAt + HOUR) {
+        try {
+          current = await unseal(pending.config, key);
+          knownSha = pending.sha;
+          savedAt = pending.savedAt;
+        } catch (err) { store.remove(PENDING_STORE); }
+      } else store.remove(PENDING_STORE);
+      const token = store.get(TOKEN_STORE, null);
+      if (token) {
+        try { githubToken = (await unseal(token, key)).token; tokenSaved = true; } catch (err) { store.remove(TOKEN_STORE); }
+      }
+    }
     document.getElementById("lock").hidden = true;
     document.getElementById("app").hidden = false;
     const scan = data.scan || {};
@@ -271,8 +356,10 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     updated.textContent = `Updated ${ago(data.generated)}`;
     updated.title = new Date(data.generated).toLocaleString();
     renderErrors(scan.errors || []);
+    renderBanner();
     for (const id of ["search", "min-score", "sort"]) document.getElementById(id).addEventListener("input", render);
-    render();
+    settingsButton.hidden = !meta;
+    if (meta && meta.needs_setup && !savedAt) showSettings(); else showJobs();
     store.set(SEEN_STORE, [...new Set([...seenBefore, ...data.jobs.map((j) => j.id)])].slice(-5000));
   }
 
@@ -283,6 +370,37 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     box.append(el("details", { class: "notice" },
       el("summary", {}, `${errors.length} problem${errors.length === 1 ? "" : "s"} in the last scan`),
       el("ul", {}, errors.map((e) => el("li", {}, el("strong", {}, e.source), `: ${e.error}`)))));
+  }
+
+  const actionsUrl = () => (meta && meta.repository ? `https://github.com/${meta.repository}/actions/workflows/pages.yml` : null);
+  function renderBanner() {
+    const box = document.getElementById("banner");
+    box.replaceChildren();
+    if (!savedAt) return;
+    const recent = Date.now() - savedAt < HOUR / 2;
+    box.append(el("div", { class: "notice info", id: "pending" },
+      `You saved new settings ${ago(new Date(savedAt).toISOString())}. `,
+      recent ? "A scan with them is running; reload this page in a few minutes to see the results. "
+        : "The board hasn't been rebuilt with them yet, so check how the scan went. ",
+      actionsUrl() ? external(actionsUrl(), recent ? "Watch it on GitHub ↗" : "Open it on GitHub ↗") : null));
+  }
+
+  const settingsButton = document.getElementById("settings-button");
+  settingsButton.addEventListener("click", () => (view === "settings" ? showJobs() : showSettings()));
+  function showJobs() {
+    view = "jobs";
+    document.getElementById("jobs-view").hidden = false;
+    document.getElementById("settings-view").hidden = true;
+    settingsButton.setAttribute("aria-pressed", "false");
+    render();
+  }
+  function showSettings() {
+    view = "settings";
+    if (!editor) buildSettings(current);
+    document.getElementById("jobs-view").hidden = true;
+    document.getElementById("settings-view").hidden = false;
+    settingsButton.setAttribute("aria-pressed", "true");
+    window.scrollTo(0, 0);
   }
 
   const statusOf = (job) => statuses[job.id] || "review";
@@ -388,19 +506,22 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     const list = document.getElementById("list");
     const subtitle = document.getElementById("subtitle");
     if (tab === "hidden") {
-      subtitle.textContent = "Jobs your filters hid, with the reason. Change filters in your config.";
+      subtitle.textContent = `Jobs your filters hid, with the reason.${meta ? " Change your filters in Settings." : ""}`;
       list.replaceChildren(...(data.hidden.length ? data.hidden.map(hiddenRow) : [el("div", { class: "empty" }, "Nothing hidden.")]));
       return;
     }
     const jobs = visibleJobs();
     subtitle.textContent = `${jobs.length} job${jobs.length === 1 ? "" : "s"}. Best matches first.`;
     if (selected >= jobs.length) selected = jobs.length - 1;
-    list.replaceChildren(...(jobs.length ? jobs.map(card) : [el("div", { class: "empty" }, tab === "review" ? "You're all caught up. New matches appear after the next scan." : "Nothing here.")]));
+    const empty = meta && meta.needs_setup && !data.jobs.length
+      ? el("div", { class: "empty" }, "No jobs yet. ", el("button", { class: "link", onclick: showSettings }, "Open Settings"), " to choose what your board looks for.")
+      : el("div", { class: "empty" }, tab === "review" ? "You're all caught up. New matches appear after the next scan." : "Nothing here.");
+    list.replaceChildren(...(jobs.length ? jobs.map(card) : [empty]));
     list._jobs = jobs;
   }
 
   document.addEventListener("keydown", (e) => {
-    if (!data || e.metaKey || e.ctrlKey || e.altKey || e.target.closest("input, select, textarea")) return;
+    if (!data || view !== "jobs" || e.metaKey || e.ctrlKey || e.altKey || e.target.closest("input, select, textarea")) return;
     if (e.key === "Enter" && e.target.closest("button, a")) return;  // let the focused control handle it
     const jobs = document.getElementById("list")._jobs || [];
     if (!jobs.length) return;
@@ -415,6 +536,416 @@ kbd { font-family: var(--mono); font-size: .74rem; padding: .05rem .35rem; borde
     else if (e.key === "d") setStatus(job, statusOf(job) === "dismissed" ? "review" : "dismissed");
     else if (e.key === "o") { const u = safeUrl(job.apply || job.url); if (u) window.open(u, "_blank", "noopener"); }
   });
+
+  // --- settings -------------------------------------------------------------------------------
+  // The form edits a copy of your settings document, so fields it doesn't show are kept as they are.
+  const WORKPLACES = [["remote", "Remote"], ["hybrid", "Hybrid"], ["onsite", "On-site"]];
+  const LOOKING_FOR = [
+    { path: "profile.target_titles", type: "lines", rows: 4, label: "Target job titles", hint: "One per line. Roles you could realistically interview for: your level, or one step up. Jobs from company boards are kept only when the title matches one of these or a search's keywords." },
+    { path: "profile.years_experience", type: "number", min: 0, max: 60, step: "0.5", label: "Years of experience" },
+    { path: "profile.skills", type: "lines", rows: 4, label: "Skills", hint: "One per line. Jobs that mention them score higher." },
+    { path: "settings.filters.title_include", type: "lines", rows: 2, label: "Also keep titles containing", hint: "Optional, one per line: more title words to keep from company boards." },
+  ];
+  const WHERE = [
+    { path: "settings.filters.locations", type: "lines", rows: 3, label: "Acceptable locations", hint: "One per line, like Austin or Dallas, TX. Leave empty for anywhere." },
+    { path: "settings.filters.include_remote", type: "check", label: "Include remote jobs, wherever they're based" },
+    { path: "settings.filters.location_exclude", type: "lines", rows: 2, label: "Hide locations containing", hint: "One per line." },
+    { path: "profile.workplace_preferences", type: "choices", options: WORKPLACES, label: "Workplaces you'd consider", hint: "These score a little higher; nothing is hidden." },
+  ];
+  const SEARCH_AGE = { path: "settings.jobspy_hours_old", type: "int", min: 1, max: 720, blank: "default", label: "On LinkedIn, Indeed and the other job sites, only look at postings from the last (hours)" };
+  const FILTERS = [
+    { path: "settings.filters.title_exclude", type: "lines", rows: 3, label: "Hide titles containing", hint: "One per line, like senior, staff or manager." },
+    { path: "settings.filters.max_years_gap", type: "int", min: 0, max: 20, label: "Max years above your experience", hint: "Hides jobs asking for more than your years plus this. Leave empty to turn it off." },
+    { path: "settings.filters.max_age_days", type: "int", min: 1, max: 365, label: "Hide postings older than (days)", hint: "Leave empty to turn it off." },
+    { path: "settings.filters.min_salary", type: "int", money: true, min: 0, label: "Minimum salary (per year)", hint: "Only applied when a job lists its pay." },
+    { path: "settings.filters.company_exclude", type: "lines", rows: 2, label: "Hide companies", hint: "One per line." },
+    { path: "settings.filters.description_exclude", type: "lines", rows: 2, label: "Hide jobs whose description mentions", hint: "One per line." },
+  ];
+  const ELIGIBILITY = [
+    { path: "profile.work_authorization", type: "text", label: "Work authorization", placeholder: "For example: US citizen" },
+    { path: "profile.requires_sponsorship", type: "check", label: "I need visa sponsorship" },
+    { path: "settings.filters.hide_no_sponsorship", type: "check", label: "Hide jobs that say they can't sponsor visas (when you need sponsorship)" },
+    { path: "profile.security_clearance", type: "text", label: "Security clearance", placeholder: "Leave empty if you don't have one" },
+    { path: "settings.filters.hide_clearance_required", type: "check", label: "Hide jobs that require a security clearance (unless you have one)" },
+  ];
+  const NOTIFY = [
+    { path: "settings.notify.webhook_url", type: "url", label: "Webhook URL", placeholder: "https://ntfy.sh/your-topic or a Discord or Slack webhook" },
+    { path: "settings.notify.min_score", type: "int", min: 0, max: 100, blank: "default", label: "Notify about jobs scoring at least" },
+  ];
+  const RESUME = [
+    { path: "resume_text", type: "textarea", rows: 6, label: "Resume text", hint: "Optional. Only used for Claude's analysis, if you add an ANTHROPIC_API_KEY secret." },
+  ];
+
+  const clone = (value) => JSON.parse(JSON.stringify(value ?? {}));
+  const getPath = (obj, path) => path.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
+  function setPath(obj, path, value) {
+    const keys = path.split(".");
+    const last = keys.pop();
+    let o = obj;
+    for (const k of keys) {
+      if (!o[k] || typeof o[k] !== "object" || Array.isArray(o[k])) o[k] = {};
+      o = o[k];
+    }
+    o[last] = value;
+  }
+
+  let editor = null;  // the open form; kept while you look at jobs, so edits aren't lost
+  let msgEl = null, saveButton = null, tokenBox = null, tokenInput = null, rememberInput = null;
+  let overwrite = false, recovered = false, uid = 0;
+
+  function say(text, kind, ...more) {
+    msgEl.className = `msg ${kind || ""}`;
+    msgEl.replaceChildren(text, ...more);
+  }
+
+  function fieldInput(spec, value) {
+    const id = `setting-${++uid}`;
+    const hint = spec.hint ? el("span", { class: "hint" }, spec.hint) : null;
+    if (spec.type === "check") {
+      const input = el("input", { type: "checkbox", id, checked: Boolean(value), "data-path": spec.path });
+      return [el("label", { class: "check field" }, input, spec.label), input];
+    }
+    if (spec.type === "choices") {
+      const chosen = Array.isArray(value) ? value : [];
+      const input = el("div", { class: "choices", role: "group", "aria-labelledby": id, "data-path": spec.path },
+        spec.options.map(([v, label]) => el("label", { class: "check" }, el("input", { type: "checkbox", value: v, checked: chosen.includes(v) }), label)));
+      return [el("div", { class: "field" }, el("span", { class: "label", id }, spec.label), input, hint), input];
+    }
+    let input;
+    if (spec.type === "lines" || spec.type === "textarea") {
+      const text = spec.type === "lines" && Array.isArray(value) ? value.join("\n") : String(value ?? "");
+      const rows = Math.min(12, Math.max(spec.rows || 3, text.split("\n").length + 1));  // show the whole list
+      input = el("textarea", { id, rows, placeholder: spec.placeholder, spellcheck: spec.type === "lines" ? "false" : null, "data-path": spec.path }, text);
+    } else {
+      const numeric = spec.type === "int" || spec.type === "number";
+      input = el("input", {
+        id, type: numeric ? (spec.money ? "text" : "number") : spec.type, value: value ?? "", placeholder: spec.placeholder,
+        min: numeric && !spec.money ? spec.min : null, max: numeric && !spec.money ? spec.max : null, step: spec.step,
+        inputmode: spec.money ? "numeric" : null, "data-path": spec.path,
+      });
+    }
+    return [el("div", { class: "field" }, el("label", { for: id }, spec.label), input, hint), input];
+  }
+
+  function readField(spec, input) {
+    if (spec.type === "check") return input.checked;
+    if (spec.type === "choices") return [...input.querySelectorAll("input:checked")].map((i) => i.value);
+    if (spec.type === "lines") return input.value.split("\n").map((s) => s.trim()).filter(Boolean);
+    const raw = input.value.trim();
+    if (spec.type === "int" || spec.type === "number") {
+      if (!raw) return spec.blank === "default" ? getPath(meta.defaults, spec.path) ?? null : null;
+      const thousands = spec.money && /k$/i.test(raw);
+      const n = Number((spec.money ? raw.replace(/[$,\s]|k$/gi, "") : raw)) * (thousands ? 1000 : 1);
+      const range = spec.max !== undefined ? ` from ${spec.min} to ${spec.max}` : "";
+      if (!Number.isFinite(n) || n < (spec.min ?? 0) || (spec.max !== undefined && n > spec.max)) throw new Error(`${spec.label}: enter a number${range}.`);
+      return spec.type === "int" ? Math.round(n) : n;
+    }
+    if (spec.type === "url" && raw && !/^https?:\/\/\S+$/i.test(raw)) throw new Error(`${spec.label}: enter a full web address, starting with https://`);
+    return raw;
+  }
+
+  function companyEditor(items) {
+    const rows = el("div", { class: "rows", id: "companies" });
+    function add(item) {
+      const orig = typeof item === "string" || (item && typeof item === "object") ? item : null;
+      const obj = typeof orig === "string" ? { url: orig } : orig || {};
+      const url0 = String(obj.url || obj.careers_url || "");
+      const name = el("input", { type: "text", value: obj.name || "", placeholder: "Name (optional)", "aria-label": "Company name" });
+      const url = el("input", { type: "url", value: url0, placeholder: obj.ats && obj.slug ? `${obj.ats}: ${obj.slug}` : "Careers page or job board URL", "aria-label": "Careers page or job board URL" });
+      const row = el("div", { class: "row company" }, name, url,
+        el("button", { type: "button", class: "btn-sm btn-ghost", onclick: () => row.remove() }, "Remove"));
+      row.read = () => {
+        const n = name.value.trim();
+        let u = url.value.trim();
+        if (orig !== null && u === url0) {  // the same board as before: keep what was found out about it
+          if (typeof orig === "string") return n ? { name: n, url: u } : orig;
+          const kept = { ...obj };
+          if (n) kept.name = n; else delete kept.name;
+          return kept;
+        }
+        if (!u) {
+          if (n) throw new Error(`Add a careers page or job board URL for ${n}.`);
+          return null;
+        }
+        if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+        if (!/^https?:\/\/[^\s/]+\.[^\s/]+/i.test(u)) throw new Error(`${url.value.trim()} isn't a web address.`);
+        return n ? { name: n, url: u } : { url: u };
+      };
+      rows.append(row);
+      return row;
+    }
+    (Array.isArray(items) ? items : []).forEach(add);
+    return { rows, add, read: () => [...rows.children].map((row) => row.read()).filter(Boolean) };
+  }
+
+  function searchEditor(items) {
+    const labels = meta.sources || {};
+    const rows = el("div", { class: "rows", id: "searches" });
+    function add(item) {
+      const orig = typeof item === "string" ? { keywords: item } : item && typeof item === "object" ? item : null;
+      const obj = orig || {};
+      let picked = typeof obj.sources === "string" ? obj.sources.split(",").map((s) => s.trim()) : obj.sources;
+      if (!Array.isArray(picked) || !picked.length) picked = meta.default_sources || [];
+      const keywords = el("input", { type: "text", value: obj.keywords || "", placeholder: "Keywords, like AI engineer", "aria-label": "Keywords" });
+      const where = el("input", { type: "text", value: obj.location || "", placeholder: "Location, like Texas", "aria-label": "Location" });
+      const remote = el("input", { type: "checkbox", checked: Boolean(obj.remote_only) });
+      const row = el("div", { class: "row search" },
+        el("div", { class: "row-main" }, keywords, where,
+          el("label", { class: "check" }, remote, "Remote only"),
+          el("button", { type: "button", class: "btn-sm btn-ghost", onclick: () => row.remove() }, "Remove")),
+        el("div", { class: "sites", role: "group", "aria-label": "Sites to search" },
+          Object.entries(labels).map(([key, label]) => el("label", { class: "check" }, el("input", { type: "checkbox", value: key, checked: picked.includes(key) }), label))));
+      row.read = () => {
+        const k = keywords.value.trim();
+        if (!k) {
+          if (where.value.trim()) throw new Error("Each job search needs keywords.");
+          return null;
+        }
+        const sources = [...row.querySelectorAll(".sites input:checked")].map((i) => i.value);
+        if (!sources.length) throw new Error(`Pick at least one site for the "${k}" search.`);
+        return { ...obj, keywords: k, location: where.value.trim(), remote_only: remote.checked, sources };
+      };
+      rows.append(row);
+      return row;
+    }
+    (Array.isArray(items) ? items : []).forEach(add);
+    return { rows, add, read: () => [...rows.children].map((row) => row.read()).filter(Boolean) };
+  }
+
+  function collect() {
+    const doc = clone(editor.base);
+    for (const [spec, input] of editor.fields) setPath(doc, spec.path, readField(spec, input));
+    doc.companies = editor.companies.read();
+    doc.searches = editor.searches.read();
+    return doc;
+  }
+
+  function buildSettings(doc, message) {
+    const valueOf = (path) => { const v = getPath(doc, path); return v === undefined ? getPath(meta.defaults, path) : v; };
+    const fields = [];
+    const simple = (specs) => specs.map((spec) => {
+      const [node, input] = fieldInput(spec, valueOf(spec.path));
+      fields.push([spec, input]);
+      return node;
+    });
+    const section = (title, hint, ...body) => el("fieldset", {}, el("legend", {}, title), hint ? el("p", { class: "hint" }, hint) : null, ...body);
+    const companies = companyEditor(doc.companies);
+    const searches = searchEditor(doc.searches);
+    const addButton = (label, list) => el("button", { type: "button", class: "btn-sm", onclick: () => list.add(null).querySelector("input").focus() }, label);
+    editor = { base: clone(doc), fields, companies, searches };
+    msgEl = el("div", { class: "msg", id: "settings-message", role: "status", "aria-live": "polite" });
+    saveButton = el("button", { type: "button", class: "btn-primary", id: "save-settings", onclick: save }, "Save and scan");
+    tokenBox = el("div");
+    document.getElementById("settings-view").replaceChildren(...[
+      el("div", { class: "settings-head" }, el("h1", {}, "Settings"), el("button", { type: "button", class: "btn-sm", onclick: showJobs }, "Back to jobs")),
+      ...intro(),
+      recovery(),
+      section("What you're looking for", null, simple(LOOKING_FOR)),
+      section("Where", null, simple(WHERE)),
+      section("Companies to watch", "The careers page or job board of each company you'd like to work for. Greenhouse, Lever, Ashby, Workday and most other job boards work, and so do careers pages that link to one.",
+        companies.rows, addButton("Add a company", companies)),
+      section("Job searches", "Keyword searches on job sites. LinkedIn and Indeed often block GitHub's servers, so company boards are more dependable. Adzuna and JSearch need their API key secrets.",
+        searches.rows, addButton("Add a search", searches), simple([SEARCH_AGE])),
+      section("Filters", "Jobs a filter hides are listed under Hidden by filters, with the reason.", simple(FILTERS)),
+      section("Eligibility", null, simple(ELIGIBILITY)),
+      section("Notifications", "Get new high-scoring jobs sent to Discord, Slack, ntfy.sh or any webhook after each scan.", simple(NOTIFY)),
+      section("Resume", null, simple(RESUME)),
+      section("Back up or import", "Copy your settings as JSON to keep a backup, or paste settings from the jobbot app or the example config.", jsonTools()),
+      section("Saving", null, savingHelp(), tokenBox),
+      el("div", { class: "save-bar" }, saveButton, msgEl),
+    ].filter(Boolean));
+    renderToken();
+    if (message) say(message, "good");
+  }
+
+  function intro() {
+    const parts = [el("p", { class: "muted" }, "What your board looks for. Saving stores these settings in your GitHub repository, encrypted with your passphrase, and starts a new scan.")];
+    if (meta.needs_setup && !savedAt) {
+      parts.unshift(el("div", { class: "notice info", id: "welcome" }, el("strong", {}, "Welcome! "),
+        "Tell your board what to look for: the roles you want, where, and which companies and job sites to check. Saving runs your first scan, which takes a few minutes."));
+    }
+    if (meta.origin === "secret") parts.push(el("p", { class: "hint" }, "These settings come from your JOBBOT_CONFIG secret. Once you save them here, your board uses the saved settings instead, and you can delete the secret."));
+    if (meta.origin === "state") parts.push(el("p", { class: "hint" }, "These are the settings your last scan used. Save them to keep them."));
+    return parts;
+  }
+
+  // If the passphrase changed, the saved settings can still be opened with the old one.
+  function recovery() {
+    if (!meta.unreadable || recovered || !meta.repository) return null;
+    const pass = el("input", { type: "password", autocomplete: "off", placeholder: "Old passphrase", "aria-label": "Old passphrase" });
+    const status = el("div", { class: "error", role: "alert" });
+    const go = el("button", { type: "button", onclick: async () => {
+      go.disabled = true;
+      status.textContent = "";
+      try {
+        const res = await github(contentsUrl(), githubToken);
+        if (!res.ok) throw new Error(problem(res));
+        const sealed = JSON.parse(atob(res.json.content.replace(/\s+/g, "")));
+        let doc;
+        try {
+          doc = await unseal(sealed, await deriveKey(pass.value, sealed.salt, sealed.iterations));
+        } catch (err) {
+          status.textContent = "That passphrase didn't work either.";
+          return;
+        }
+        knownSha = res.json.sha;
+        recovered = true;
+        buildSettings(doc, "Recovered your saved settings. Press Save and scan to keep them with your current passphrase.");
+      } catch (err) {
+        status.textContent = `Couldn't load them: ${err.message || err}`;
+      } finally {
+        go.disabled = false;
+      }
+    } }, "Recover");
+    return el("div", { class: "notice", id: "recovery" }, el("strong", {}, "Your saved settings couldn't be decrypted. "),
+      "If you changed your passphrase, enter the old one to load them, then save them again.", el("div", { class: "inline" }, pass, go), status);
+  }
+
+  async function parseConfig(text) {
+    text = text.trim();
+    if (!text) throw new Error("paste your settings first");
+    const doc = JSON.parse(text.startsWith("jobbot1:") ? await gunzip(b64(text.slice(8).replace(/\s+/g, ""))) : text);
+    if (!doc || typeof doc !== "object" || Array.isArray(doc)) throw new Error("settings must be a JSON object");
+    for (const key of Object.keys(doc)) if (key.startsWith("_")) delete doc[key];  // like "_help" in the example
+    return doc;
+  }
+
+  function jsonTools() {
+    const box = el("textarea", { rows: 6, class: "mono", id: "settings-json", spellcheck: "false", "aria-label": "Settings as JSON",
+      placeholder: "Paste settings as JSON, or the jobbot1:… text from the jobbot app, then press Load into the form." });
+    return [box, el("div", { class: "btn-row" },
+      el("button", { type: "button", onclick: () => {
+        try { box.value = JSON.stringify(collect(), null, 2); box.select(); } catch (err) { say(err.message, "bad"); }
+      } }, "Show these settings as JSON"),
+      el("button", { type: "button", onclick: async () => {
+        try {
+          const doc = await parseConfig(box.value);
+          recovered = true;
+          buildSettings(doc, "Loaded. Check the settings, then press Save and scan.");
+        } catch (err) {
+          say(`Couldn't load that: ${err.message || err}`, "bad");
+        }
+      } }, "Load into the form"))];
+  }
+
+  function savingHelp() {
+    const repo = meta.repository;
+    if (!repo) return el("p", { class: "hint" }, "Saving only works on your hosted board, which knows its GitHub repository.");
+    return [
+      el("p", { class: "hint" }, "Your settings are saved to ", el("code", {}, meta.path), " in ", external(`https://github.com/${repo}`, repo),
+        ", encrypted with your passphrase. GitHub Pages can't save anything by itself, so this page needs a GitHub token that can write to that repository:"),
+      el("ol", { class: "hint" },
+        el("li", {}, external("https://github.com/settings/personal-access-tokens/new", "Create a fine-grained token ↗"), ". Any name works; choose when it expires."),
+        el("li", {}, "Under Repository access, choose ", el("strong", {}, "Only select repositories"), " and pick ", el("strong", {}, repo.split("/").pop()), "."),
+        el("li", {}, "Under Permissions, set ", el("strong", {}, "Contents"), " to ", el("strong", {}, "Read and write"), ". Nothing else is needed."),
+        el("li", {}, "Generate the token and paste it below.")),
+    ];
+  }
+
+  function renderToken() {
+    if (!meta.repository) return;
+    tokenInput = el("input", { type: "password", id: "github-token", autocomplete: "off", spellcheck: "false",
+      placeholder: githubToken ? "Paste a new token to replace the one you're using" : "github_pat_…" });
+    rememberInput = el("input", { type: "checkbox", id: "remember-token", checked: true });
+    const status = githubToken
+      ? el("p", { class: "hint", id: "token-status" }, tokenSaved ? "A token is saved on this device. " : "Using the token you pasted, until you leave this page. ",
+          el("button", { type: "button", class: "link", onclick: forgetToken }, "Forget it"))
+      : null;
+    tokenBox.replaceChildren(
+      el("div", { class: "field" }, el("label", { for: "github-token" }, "GitHub token"), tokenInput, status),
+      el("label", { class: "check field" }, rememberInput, "Remember it on this device (encrypted with your passphrase; it's only ever sent to api.github.com)"));
+  }
+
+  function forgetToken() {
+    store.remove(TOKEN_STORE);
+    githubToken = null;
+    tokenSaved = false;
+    renderToken();
+  }
+
+  const contentsUrl = () => `https://api.github.com/repos/${meta.repository}/contents/${meta.path}`;
+  async function github(url, token, init = {}) {
+    const headers = { Accept: "application/vnd.github+json" };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    if (init.body) headers["Content-Type"] = "application/json";
+    const res = await fetch(url, { ...init, headers, cache: "no-store" });
+    let json = null;
+    try { json = await res.json(); } catch (err) { /* no JSON body */ }
+    return { ok: res.ok, status: res.status, json, message: (json && json.message) || res.statusText || "" };
+  }
+  function problem(res) {
+    const repo = meta.repository;
+    if (res.status === 401) return "GitHub didn't accept the token: it may have expired or been revoked. Create a new one and paste it below.";
+    if (res.status === 403) return `The token isn't allowed to change ${repo}: give it Contents: Read and write on this repository. (GitHub said: ${res.message})`;
+    if (res.status === 404) return `GitHub couldn't find ${repo} with this token. Check that the token has access to this repository.`;
+    return `GitHub said: ${res.status} ${res.message}`.trim();
+  }
+
+  async function save() {
+    let doc;
+    try {
+      doc = collect();
+    } catch (err) {
+      say(err.message, "bad");
+      return;
+    }
+    if (!meta.repository) { say("Saving only works on your hosted board.", "bad"); return; }
+    const typed = tokenInput.value.trim();
+    const token = typed || githubToken;
+    if (!token) {
+      say("To save, paste a GitHub token under Saving (the steps are right above it).", "bad");
+      tokenInput.focus();
+      return;
+    }
+    if (!window.CompressionStream) { say("This browser can't save settings. Use an up-to-date browser.", "bad"); return; }
+    saveButton.disabled = true;
+    saveButton.textContent = "Saving…";
+    say("");
+    const fail = (res) => {
+      if (res.status === 401 && !typed) forgetToken();  // the saved token stopped working
+      say(problem(res), "bad");
+    };
+    try {
+      const sealed = await seal(doc, boardKey);
+      const body = { message: "Update job board settings", content: btoa(JSON.stringify(sealed)) };
+      if (overwrite) {  // you chose to replace settings that were changed elsewhere
+        const res = await github(contentsUrl(), token);
+        if (res.ok) knownSha = res.json.sha;
+        else if (res.status === 404) knownSha = null;
+        else { fail(res); return; }
+      }
+      if (knownSha) body.sha = knownSha;
+      const res = await github(contentsUrl(), token, { method: "PUT", body: JSON.stringify(body) });
+      // 409: the file isn't the version this page saw (unless a branch rule refused the change).
+      const changed = (res.status === 409 && !/rule|protect|pull request/i.test(res.message)) || (res.status === 422 && /sha/i.test(res.message));
+      if (changed) {
+        overwrite = true;
+        say("Your settings were changed somewhere else after this page was built: on another device, or by a save that's still being scanned. Reload in a few minutes to see them, or press Save and scan again to replace them with these.", "bad");
+        return;
+      }
+      if (!res.ok) { fail(res); return; }
+      overwrite = false;
+      knownSha = res.json && res.json.content ? res.json.content.sha : null;
+      current = doc;
+      editor.base = clone(doc);
+      savedAt = Date.now();
+      store.set(PENDING_STORE, { savedAt, sha: knownSha, config: sealed });
+      if (typed) {
+        githubToken = typed;
+        tokenSaved = rememberInput.checked;
+        if (tokenSaved) store.set(TOKEN_STORE, await seal({ token: typed }, boardKey)); else store.remove(TOKEN_STORE);
+        renderToken();
+      }
+      renderBanner();
+      say("Saved. A scan with these settings has started, and your board updates when it finishes, usually within a few minutes. ", "good",
+        actionsUrl() ? external(actionsUrl(), "Watch it on GitHub ↗") : "");
+    } catch (err) {
+      say(`Couldn't save: ${err.message || err}. Check your connection and try again.`, "bad");
+    } finally {
+      saveButton.disabled = false;
+      saveButton.textContent = "Save and scan";
+    }
+  }
 })();
 </script>
 </body>

@@ -7,7 +7,9 @@ import functools
 import gzip
 import json
 import re
+import subprocess
 import threading
+from datetime import UTC, datetime, timedelta
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,13 +20,17 @@ from sqlalchemy import select
 from jobbot.db import Database, get_settings
 from jobbot.models import Company, Job, SearchQuery
 from jobbot.publish import (
+    CONFIG_FILE,
     PublishError,
     board_payload,
+    board_settings,
     decode_config,
     decrypt,
     derive_key,
     encode_config,
+    encrypt_config,
     export_config,
+    git_blob_sha,
     import_config,
     publish,
     restore_state,
@@ -262,14 +268,27 @@ def sample_payload() -> dict:
 
 
 @pytest.fixture
-def board_site(tmp_path):
-    salt = site_salt("someone/job-search")
-    write_site(tmp_path / "site", sample_payload(), derive_key(PASSPHRASE, salt), salt)
-    handler = functools.partial(_QuietHandler, directory=str(tmp_path / "site"))
-    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}/"
-    server.shutdown()
+def serve_board(tmp_path):
+    """Publish a board page with the given payload and serve it on localhost."""
+    servers = []
+
+    def serve(payload: dict) -> str:
+        site = tmp_path / f"site{len(servers)}"
+        salt = site_salt("someone/job-search")
+        write_site(site, payload, derive_key(PASSPHRASE, salt), salt)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(_QuietHandler, directory=str(site)))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        servers.append(server)
+        return f"http://127.0.0.1:{server.server_address[1]}/"
+
+    yield serve
+    for server in servers:
+        server.shutdown()
+
+
+@pytest.fixture
+def board_site(serve_board):
+    return serve_board(sample_payload())
 
 
 @requires_browser
@@ -325,8 +344,6 @@ def test_board_page_decrypts_in_the_browser(board_site):
 
 
 def test_board_payload_skips_closed_and_stale_jobs(db):
-    from datetime import timedelta
-
     from jobbot.models import utcnow
 
     now = utcnow()
@@ -368,3 +385,337 @@ async def test_example_config_is_valid(db):
     with db.session() as s:
         assert {c.ats for c in s.scalars(select(Company))} == {"greenhouse", "lever", "ashby"}
         assert len(s.scalars(select(SearchQuery)).all()) == 2
+
+
+# -- settings edited on the board ------------------------------------------------------------
+
+
+def mock_sources() -> None:
+    respx.get("https://boards-api.greenhouse.io/v1/boards/acme/jobs").respond(
+        json=load_json("greenhouse_jobs.json")
+    )
+    respx.get("https://api.lever.co/v0/postings/globex").respond(json=load_json("lever_postings.json"))
+    respx.get(url__startswith="https://remotive.com/api/remote-jobs").respond(json={"jobs": []})
+
+
+def saved_settings(path: Path, config: dict, passphrase: str = PASSPHRASE) -> Path:
+    """Write a settings file the way the board's Settings page saves it."""
+    salt = site_salt("someone/job-search")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(encrypt_config(config, derive_key(passphrase, salt), salt))
+    return path
+
+
+@respx.mock
+async def test_settings_saved_from_the_board_are_used(tmp_path, env, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/job-search")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    mock_sources()
+    saved = saved_settings(tmp_path / "repo" / CONFIG_FILE, CONFIG)
+    # Settings saved on the board win over the JOBBOT_CONFIG secret.
+    secret = encode_config({**CONFIG, "searches": [{"keywords": "from the secret", "sources": ["remotive"]}]})
+    site, state = tmp_path / "site", tmp_path / "state.json"
+
+    assert await publish(env, site, state, secret, PASSPHRASE, config_file=saved) == 0
+
+    for private in ("Backend Engineer", "jane@example.com", "Python"):
+        assert private not in saved.read_text()
+    payload = open_envelope(read_envelope(site / "index.html"), PASSPHRASE)
+    assert payload["scan"]["status"] == "ok"
+    assert {"Backend Engineer", "Data Engineer"} <= {j["title"] for j in payload["jobs"]}
+    meta = payload["settings"]
+    assert meta["config"] == CONFIG and meta["origin"] == "board"
+    assert (meta["repository"], meta["path"]) == ("someone/job-search", ".jobbot/config.enc.json")
+    assert not meta["needs_setup"] and not meta["unreadable"]
+    assert meta["sha"] == git_blob_sha(saved)
+    assert meta["defaults"]["settings"]["notify"]["min_score"] == 70
+    assert "apply" not in meta["defaults"]["settings"]
+    assert meta["sources"]["linkedin"] == "LinkedIn"
+    with Database(env.db_path).session() as s:
+        assert s.scalars(select(SearchQuery.keywords)).all() == ["backend engineer"]
+
+    log = capsys.readouterr().out
+    assert "Using the settings saved from your board." in log
+    for private in ("Backend", "Acme", "Globex", "backend engineer", "from the secret"):
+        assert private not in log
+
+
+def test_the_settings_version_is_the_one_github_uses(tmp_path):
+    # GitHub names file versions by their git blob ID; the page sends it back when saving, so
+    # settings changed elsewhere in the meantime aren't overwritten without asking.
+    saved = saved_settings(tmp_path / CONFIG_FILE, CONFIG)
+    git = subprocess.run(["git", "hash-object", str(saved)], capture_output=True, text=True, check=True)
+    assert git_blob_sha(saved) == git.stdout.strip()
+
+
+async def test_a_new_board_asks_for_settings(tmp_path, env, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/job-search")
+    site = tmp_path / "site"
+    missing = tmp_path / "repo" / CONFIG_FILE
+    assert await publish(env, site, tmp_path / "state.json", None, PASSPHRASE, config_file=missing) == 0
+
+    payload = open_envelope(read_envelope(site / "index.html"), PASSPHRASE)
+    meta = payload["settings"]
+    assert meta["needs_setup"] and meta["origin"] is None and meta["config"] == {} and meta["sha"] is None
+    assert payload["scan"]["status"] is None and payload["jobs"] == []  # nothing to scan, so no scan
+    assert "Nothing to scan yet" in capsys.readouterr().out
+
+
+@respx.mock
+async def test_settings_that_cant_be_decrypted_keep_the_last_ones(tmp_path, env, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/job-search")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    mock_sources()
+    site, state = tmp_path / "site", tmp_path / "state.json"
+    assert await publish(env, site, state, encode_config(CONFIG), PASSPHRASE) == 0
+
+    # Saved with another passphrase, and the secret is gone.
+    saved = saved_settings(tmp_path / "repo" / CONFIG_FILE, CONFIG, passphrase="an older passphrase")
+    assert await publish(env, site, state, None, PASSPHRASE, config_file=saved) == 0
+
+    log = capsys.readouterr().out
+    assert "Using the settings from the last run." in log and "1 problem(s) with your settings" in log
+    payload = open_envelope(read_envelope(site / "index.html"), PASSPHRASE)
+    meta = payload["settings"]
+    assert meta["unreadable"] and meta["origin"] == "state" and not meta["needs_setup"]
+    assert {c["slug"] for c in meta["config"]["companies"]} == {"acme", "globex"}  # the last run's
+    assert payload["scan"]["status"] == "ok"
+    assert any("Couldn't decrypt the settings" in e["error"] for e in payload["scan"]["errors"])
+
+
+async def test_invalid_settings_are_explained_on_the_board(tmp_path, env, monkeypatch, capsys):
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/job-search")
+    site = tmp_path / "site"
+    bad = json.dumps({"profile": {"years_experience": "plenty"}, "companies": ["https://jobs.lever.co/x"]})
+    assert await publish(env, site, tmp_path / "state.json", bad, PASSPHRASE) == 0
+
+    payload = open_envelope(read_envelope(site / "index.html"), PASSPHRASE)
+    errors = [e["error"] for e in payload["scan"]["errors"]]
+    assert any(e.startswith("Your profile isn't valid (profile.years_experience:") for e in errors)
+    assert payload["settings"]["config"]["profile"]["years_experience"] == "plenty"  # to fix in Settings
+    assert payload["settings"]["needs_setup"]
+    log = capsys.readouterr().out
+    assert "1 problem(s) with your settings" in log and "plenty" not in log
+
+
+CORS = {"Access-Control-Allow-Origin": "*"}
+
+
+def with_settings(config: dict, **meta) -> dict:
+    payload = sample_payload()
+    payload["generated"] = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    options = {"unreadable": False, "needs_setup": False, "repository": "someone/job-search", "sha": None}
+    payload["settings"] = board_settings(config, meta.pop("origin", "board"), **{**options, **meta})
+    return payload
+
+
+class FakeGitHub:
+    """Stands in for the GitHub contents API the Settings page saves through."""
+
+    def __init__(self, file: str = "", sha: str = "sha-remote"):
+        self.file, self.sha = file, sha
+        self.puts: list[tuple[dict, dict]] = []
+        self.replies: list[tuple[int, dict]] = []  # canned answers for the next PUTs
+
+    def __call__(self, route) -> None:
+        request = route.request
+        if request.method == "GET":
+            content = base64.encodebytes(self.file.encode()).decode()  # GitHub wraps it in lines
+            route.fulfill(json={"sha": self.sha, "content": content, "encoding": "base64"}, headers=CORS)
+        elif request.method == "PUT":
+            self.puts.append((json.loads(request.post_data), request.headers))
+            status, reply = (
+                self.replies.pop(0) if self.replies else (201, {"content": {"sha": f"sha-{len(self.puts)}"}})
+            )
+            route.fulfill(status=status, json=reply, headers=CORS)
+        else:
+            route.fulfill(status=405, headers=CORS)
+
+    def saved(self, index: int = -1) -> dict:
+        body = self.puts[index][0]
+        return open_envelope(json.loads(base64.b64decode(body["content"])), PASSPHRASE)
+
+
+@requires_browser
+def test_settings_are_edited_and_saved_from_the_board(serve_board):
+    from playwright.sync_api import expect, sync_playwright
+
+    config = {**CONFIG, "custom": {"kept": True}}  # fields the form doesn't show are kept as they are
+    url = serve_board(with_settings(config, origin="secret"))
+    github = FakeGitHub()
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.route("https://api.github.com/**", github)
+        page.goto(url)
+        page.fill("#passphrase", PASSPHRASE)
+        page.check("#remember")
+        page.click("#unlock-button")
+        expect(page.locator("#jobs-view")).to_be_visible()
+
+        page.click("#settings-button")
+        expect(page.locator("#settings-view")).to_contain_text("JOBBOT_CONFIG secret")
+        field = lambda path: page.locator(f'[data-path="{path}"]')  # noqa: E731
+        expect(field("profile.target_titles")).to_have_value(
+            "Backend Engineer\nData Engineer\nSoftware Engineer"
+        )
+        expect(field("profile.years_experience")).to_have_value("3")
+        expect(field("settings.notify.min_score")).to_have_value("70")  # a default: not in the config
+        expect(field("settings.filters.max_age_days")).to_have_value("")  # turned off in the config
+        expect(page.locator("#companies .row")).to_have_count(2)
+        expect(page.locator("#searches .row")).to_have_count(1)
+
+        field("profile.target_titles").fill("Backend Engineer\n Platform Engineer \n\n")
+        field("settings.filters.locations").fill("Austin, TX\nRemote")
+        field("settings.filters.min_salary").fill("$120k")
+        page.locator("#companies .row").first.get_by_role("button", name="Remove").click()
+        page.get_by_role("button", name="Add a company").click()
+        added = page.locator("#companies .row").last
+        added.get_by_label("Company name").fill("OpenAI")
+        added.get_by_label("Careers page or job board URL").fill("jobs.ashbyhq.com/openai")
+        search = page.locator("#searches .row").first
+        search.get_by_label("LinkedIn").check()
+        page.get_by_role("button", name="Add a search").click()
+        page.locator("#searches .row").last.get_by_label("Keywords").fill("platform engineer")
+
+        # Problems are caught before anything is sent.
+        field("settings.notify.webhook_url").fill("discord")
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("Webhook URL: enter a full web address")
+        field("settings.notify.webhook_url").fill("")
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("paste a GitHub token")
+        assert github.puts == []
+
+        page.fill("#github-token", "github_pat_TEST_TOKEN_123")
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("Saved.")
+        expect(page.locator("#pending")).to_contain_text("You saved new settings")
+        body, headers = github.puts[0]
+        assert headers["authorization"] == "Bearer github_pat_TEST_TOKEN_123"
+        assert body["message"] == "Update job board settings" and "sha" not in body  # a new file
+        doc = github.saved()
+        assert doc["profile"]["target_titles"] == ["Backend Engineer", "Platform Engineer"]
+        assert doc["profile"]["email"] == "jane@example.com"
+        assert doc["settings"]["filters"]["locations"] == ["Austin, TX", "Remote"]
+        assert doc["settings"]["filters"]["min_salary"] == 120000
+        assert doc["settings"]["filters"]["max_age_days"] is None
+        assert doc["settings"]["notify"] == {"webhook_url": "", "min_score": 70}
+        assert doc["companies"] == [
+            {"name": "Globex Corp", "url": "https://jobs.lever.co/globex"},
+            {"name": "OpenAI", "url": "https://jobs.ashbyhq.com/openai"},
+        ]
+        assert doc["searches"] == [
+            {
+                "keywords": "backend engineer",
+                "location": "New York",
+                "remote_only": False,
+                "sources": ["linkedin", "remotive"],
+            },
+            {
+                "keywords": "platform engineer",
+                "location": "",
+                "remote_only": False,
+                "sources": ["linkedin", "indeed"],
+            },
+        ]
+        assert doc["custom"] == {"kept": True} and doc["resume_text"] == CONFIG["resume_text"]
+
+        # The token and the pending settings are remembered, encrypted.
+        stored = page.evaluate("JSON.stringify(localStorage)")
+        assert "jobbot:token:" in stored and "jobbot:pending:" in stored
+        for secret in ("github_pat_TEST_TOKEN_123", "Platform Engineer", "OpenAI"):
+            assert secret not in stored
+
+        # Saving again names the version it saved, so changes made elsewhere aren't overwritten
+        # without asking.
+        github.replies.append((409, {"message": "is at 1234 but expected sha-1"}))
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("changed somewhere else")
+        assert github.puts[1][0]["sha"] == "sha-1"
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("Saved.")
+        assert github.puts[2][0]["sha"] == "sha-remote"
+        assert github.puts[2][1]["authorization"] == "Bearer github_pat_TEST_TOKEN_123"
+
+        # Until the new scan is published, a reload shows the saved settings, not the old ones.
+        page.reload()
+        expect(page.locator("#pending")).to_be_visible()
+        page.click("#settings-button")
+        expect(field("profile.target_titles")).to_have_value("Backend Engineer\nPlatform Engineer")
+        expect(page.locator("#token-status")).to_contain_text("saved on this device")
+
+        # An expired token is forgotten.
+        github.replies.append((401, {"message": "Bad credentials"}))
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("didn't accept the token")
+        assert github.puts[3][0]["sha"] == "sha-3"
+        expect(page.locator("#token-status")).to_have_count(0)
+        assert "jobbot:token:" not in page.evaluate("JSON.stringify(localStorage)")
+
+        # Settings can be imported, like the compact text the jobbot app copies.
+        example = json.loads(
+            (Path(__file__).parents[1] / "examples" / "jobbot-config.example.json").read_text()
+        )
+        page.fill("#settings-json", encode_config(example))
+        page.get_by_role("button", name="Load into the form").click()
+        expect(page.locator("#settings-message")).to_contain_text("Loaded.")
+        expect(field("profile.target_titles")).to_have_value("\n".join(example["profile"]["target_titles"]))
+        expect(page.locator("#companies .row")).to_have_count(3)
+        page.get_by_role("button", name="Show these settings as JSON").click()
+        assert "_help" not in json.loads(page.locator("#settings-json").input_value())
+        assert errors == []
+        browser.close()
+
+
+@requires_browser
+def test_a_new_board_opens_settings_and_recovers_old_ones(serve_board):
+    from playwright.sync_api import expect, sync_playwright
+
+    payload = with_settings({}, origin=None, needs_setup=True, unreadable=True, sha="sha-old")
+    payload["jobs"], payload["hidden"] = [], []
+    url = serve_board(payload)
+    salt = site_salt("someone/job-search")
+    github = FakeGitHub(encrypt_config(CONFIG, derive_key("the old passphrase", salt), salt), sha="sha-old")
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.route("https://api.github.com/**", github)
+        page.goto(url)
+        page.fill("#passphrase", PASSPHRASE)
+        page.click("#unlock-button")
+
+        # A board with nothing to scan opens Settings, with the defaults filled in.
+        expect(page.locator("#welcome")).to_be_visible()
+        titles = page.locator('[data-path="profile.target_titles"]')
+        expect(titles).to_have_value("")
+        expect(page.locator('[data-path="settings.filters.max_years_gap"]')).to_have_value("2")
+        expect(page.locator('[data-path="settings.filters.include_remote"]')).to_be_checked()
+
+        recovery = page.locator("#recovery")
+        recovery.get_by_label("Old passphrase").fill("not it either")
+        recovery.get_by_role("button", name="Recover").click()
+        expect(recovery).to_contain_text("didn't work either")
+        recovery.get_by_label("Old passphrase").fill("the old passphrase")
+        recovery.get_by_role("button", name="Recover").click()
+        expect(titles).to_have_value("Backend Engineer\nData Engineer\nSoftware Engineer")
+        expect(page.locator("#recovery")).to_have_count(0)
+        expect(page.locator("#settings-message")).to_contain_text("Recovered")
+
+        page.fill("#github-token", "github_pat_TEST")
+        page.uncheck("#remember-token")
+        page.click("#save-settings")
+        expect(page.locator("#settings-message")).to_contain_text("Saved.")
+        assert github.puts[0][0]["sha"] == "sha-old"  # replaces the file it recovered
+        assert github.saved()["profile"]["target_titles"] == CONFIG["profile"]["target_titles"]
+        assert "jobbot:token:" not in page.evaluate("JSON.stringify(localStorage)")  # not remembered
+        expect(page.locator("#token-status")).to_contain_text("until you leave this page")
+
+        page.get_by_role("button", name="Back to jobs").click()
+        expect(page.locator("#list")).to_contain_text("No jobs yet")
+        assert errors == []
+        browser.close()

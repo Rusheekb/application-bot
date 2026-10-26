@@ -137,11 +137,11 @@
 <section class="card" id="hosted" style="margin-top:1rem">
   <h2>Hosted job board (GitHub Pages)</h2>
   <p class="muted">Scan on GitHub Actions and get your matches on an encrypted web page, for free, even while this
-    computer is off. Save this config as a repository secret named <code>JOBBOT_CONFIG</code>, add a long passphrase
-    as <code>JOBBOT_PAGE_PASSWORD</code>, then run the <em>Job board</em> workflow (steps in the README). Copy it
-    again whenever you change your profile, filters or sources here.</p>
-  <p class="muted">It holds your profile, filters, sources and resume text, so keep it in GitHub secrets only.
-    Auto-apply and status changes stay in this app.</p>
+    computer is off. Set it up with the steps in the README, then paste this config into your board's
+    <em>Settings → Back up or import</em> and save (or store it as a repository secret named
+    <code>JOBBOT_CONFIG</code>). Copy it again whenever you change your profile, filters or sources here.</p>
+  <p class="muted">It holds your profile, filters, sources and resume text, so only paste it into your board or a
+    GitHub secret. Auto-apply and status changes stay in this app.</p>
   {% if hosted_size > 48 %}
     <div class="notice bad">This config is {{ hosted_size }} KB, over GitHub's 48 KB limit for secrets. Shorten your
       resume text or profile summary.</div>

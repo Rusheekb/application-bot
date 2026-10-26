@@ -1,8 +1,10 @@
-"""A hosted, read-only job board for GitHub Pages.
+"""A hosted job board for GitHub Pages.
 
-GitHub Pages only serves static files, so a scheduled GitHub Actions workflow does the work:
+GitHub Pages only serves static files, so a GitHub Actions workflow does the work, on a schedule
+and whenever you save Settings on the board:
 
-1. read your setup (profile, filters, companies, searches) from the JOBBOT_CONFIG secret,
+1. read your setup (profile, filters, companies, searches) from the settings file the board saves
+   to the repository (encrypted), or else from the JOBBOT_CONFIG secret,
 2. restore the previous run's database from an encrypted state file,
 3. run a normal scan,
 4. publish the matches as a single static page, encrypted with your passphrase
@@ -28,6 +30,7 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import delete, or_, select
 
 from jobbot.config import Env
@@ -48,6 +51,8 @@ from jobbot.sources.detect import detect_company
 from jobbot.text import format_salary, truncate
 
 CONFIG_PREFIX = "jobbot1:"
+# Where the board's Settings page saves your setup, encrypted, in the repository.
+CONFIG_FILE = ".jobbot/config.enc.json"
 PBKDF2_ITERATIONS = 600_000
 MIN_PASSPHRASE = 12
 ASSETS = Path(__file__).with_name("board")
@@ -135,19 +140,30 @@ def _int(value: Any, default: int, low: int, high: int) -> int:
         return default
 
 
+def _problems(exc: ValidationError, prefix: str) -> str:
+    return "; ".join(f"{'.'.join([prefix, *map(str, e['loc'])])}: {e['msg']}" for e in exc.errors()[:5])
+
+
 async def import_config(db: Database, config: dict[str, Any]) -> list[str]:
     """Make the database match `config`. Companies may be given as {"url": ...}; their job board
     is detected here. Returns warnings to show the user."""
     warnings: list[str] = []
-    settings_doc = config.get("settings") or {}
-    if not isinstance(settings_doc, dict):
-        raise PublishError("JOBBOT_CONFIG: 'settings' must be an object")
+    profile_doc, settings_doc = config.get("profile") or {}, config.get("settings") or {}
+    if not isinstance(profile_doc, dict) or not isinstance(settings_doc, dict):
+        raise PublishError("Your settings aren't valid: 'profile' and 'settings' must be objects")
+    if not isinstance(config.get("companies") or [], list) or not isinstance(
+        config.get("searches") or [], list
+    ):
+        raise PublishError("Your settings aren't valid: 'companies' and 'searches' must be lists")
     try:
-        profile = Profile.model_validate(config.get("profile") or {})
+        profile = Profile.model_validate(profile_doc)
+    except ValidationError as exc:
+        raise PublishError(f"Your profile isn't valid ({_problems(exc, 'profile')})") from exc
+    try:
         # Auto-apply needs a browser and your review, so it stays in the local app.
         settings = AppSettings.model_validate({k: v for k, v in settings_doc.items() if k != "apply"})
-    except ValueError as exc:
-        raise PublishError(f"JOBBOT_CONFIG has an invalid profile or settings: {exc}") from exc
+    except ValidationError as exc:
+        raise PublishError(f"Your settings aren't valid ({_problems(exc, 'settings')})") from exc
 
     companies: list[dict[str, Any]] = []
     async with new_http_client(timeout=20) as client:
@@ -268,6 +284,72 @@ def decrypt(blob: dict[str, str], key: bytes) -> bytes:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     return AESGCM(key).decrypt(base64.b64decode(blob["iv"]), base64.b64decode(blob["data"]), None)
+
+
+def seal(data: bytes, key: bytes, salt: bytes) -> dict[str, Any]:
+    """Compress and encrypt `data` in the format the board page opens, and its Settings saves."""
+    return {
+        "v": 1,
+        "kdf": "PBKDF2-SHA256",
+        "iterations": PBKDF2_ITERATIONS,
+        "salt": base64.b64encode(salt).decode(),
+        "compression": "gzip",
+        **encrypt(gzip.compress(data, 9), key),
+    }
+
+
+def encrypt_config(config: dict[str, Any], key: bytes, salt: bytes) -> str:
+    """A settings file like the one the board's Settings page saves."""
+    return json.dumps(seal(json.dumps(config).encode(), key, salt))
+
+
+def read_config_file(path: Path, passphrase: str, key: bytes, salt: bytes) -> dict[str, Any]:
+    """Decrypt the settings saved from the board. `key` is the board's key for this `salt`."""
+    try:
+        sealed = json.loads(path.read_text())
+        file_salt, iterations = base64.b64decode(sealed["salt"]), int(sealed["iterations"])
+        if (file_salt, iterations) != (salt, PBKDF2_ITERATIONS):
+            # Saved under the repository's old name, or with other key settings.
+            if not 100_000 <= iterations <= 10_000_000:
+                raise ValueError("unexpected key settings")
+            key = derive_key(passphrase, file_salt, iterations)
+        plain = decrypt(sealed, key)
+        config = json.loads(gzip.decompress(plain) if sealed.get("compression") == "gzip" else plain)
+    except Exception as exc:
+        raise PublishError(
+            "Couldn't decrypt the settings saved from your board (was the passphrase changed?). "
+            "Open Settings to recover them with the old passphrase, or save them again."
+        ) from exc
+    if not isinstance(config, dict):
+        raise PublishError(
+            "The settings saved from your board aren't valid; open Settings and save them again."
+        )
+    return config
+
+
+def load_config(
+    config_file: Path | None, config_text: str | None, passphrase: str, key: bytes, salt: bytes
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    """The settings to scan with: those saved from the board, else the JOBBOT_CONFIG secret.
+    Returns (config or None, where it came from, problems to show on the board)."""
+    problems: list[str] = []
+    if config_file is not None and config_file.is_file():
+        try:
+            return read_config_file(config_file, passphrase, key, salt), "board", problems
+        except PublishError as exc:
+            problems.append(str(exc))
+    if config_text and config_text.strip():
+        try:
+            return decode_config(config_text), "secret", problems
+        except PublishError as exc:
+            problems.append(str(exc))
+    return None, None, problems
+
+
+def git_blob_sha(path: Path) -> str:
+    """The ID GitHub gives a file's content, so the board can tell if it changed since this run."""
+    content = path.read_bytes()
+    return hashlib.sha1(b"blob %d\0" % len(content) + content, usedforsecurity=False).hexdigest()
 
 
 def save_state(db_path: Path, state_path: Path, key: bytes) -> None:
@@ -420,19 +502,48 @@ def write_site(
     if payload is None or key is None:
         (out / "index.html").write_text(setup_page(repository))
         return
-    raw = json.dumps(payload, separators=(",", ":")).encode()
-    envelope = {
-        "v": 1,
-        "kdf": "PBKDF2-SHA256",
-        "iterations": PBKDF2_ITERATIONS,
-        "salt": base64.b64encode(salt).decode(),
-        "compression": "gzip",
-        **encrypt(gzip.compress(raw, 9), key),
-    }
+    envelope = seal(json.dumps(payload, separators=(",", ":")).encode(), key, salt)
     page = (ASSETS / "board.html").read_text()
     # JSON in a <script type="application/json"> block; escape "<" so it can't close the tag.
     data = json.dumps(envelope).replace("<", "\\u003c")
     (out / "index.html").write_text(page.replace("__JOBBOT_ENVELOPE__", data))
+
+
+def _has_sources(db: Database) -> bool:
+    with db.session() as s:
+        return any(
+            s.scalars(select(model.id).where(model.enabled).limit(1)).first() is not None
+            for model in (Company, SearchQuery)
+        )
+
+
+def board_settings(
+    config: dict[str, Any],
+    origin: str | None,
+    *,
+    unreadable: bool,
+    needs_setup: bool,
+    repository: str | None,
+    sha: str | None,
+) -> dict[str, Any]:
+    """What the board's Settings page needs: your settings, defaults for anything they leave out,
+    and where to save them."""
+    return {
+        "config": config,
+        # "board", "secret", "state" (kept from the last run) or None.
+        "origin": origin,
+        "unreadable": unreadable,
+        "needs_setup": needs_setup,
+        "repository": repository,
+        "path": CONFIG_FILE,
+        "sha": sha,
+        "defaults": {
+            "profile": Profile().model_dump(mode="json"),
+            "settings": AppSettings().model_dump(mode="json", exclude={"apply"}),
+        },
+        "sources": SEARCH_SOURCE_LABELS,
+        "default_sources": DEFAULT_SEARCH_SOURCES,
+    }
 
 
 async def publish(
@@ -442,17 +553,17 @@ async def publish(
     config_text: str | None,
     passphrase: str | None,
     board_url: str = "",
+    config_file: Path | None = None,
 ) -> int:
     """Run one hosted scan and write the site. Returns a process exit code.
 
-    Output goes to a public log, so it only ever prints counts, never jobs, companies or searches."""
+    Settings come from `config_file`, which the board's Settings page saves, or else from the
+    JOBBOT_CONFIG secret (`config_text`). Output goes to a public log, so it only ever prints
+    counts, never jobs, companies or searches."""
     repository = os.environ.get("GITHUB_REPOSITORY") or None
     salt = site_salt(repository or "jobbot")
-    if not config_text or not passphrase:
-        missing = [
-            n for n, v in (("JOBBOT_CONFIG", config_text), ("JOBBOT_PAGE_PASSWORD", passphrase)) if not v
-        ]
-        print(f"Not set up yet ({' and '.join(missing)} missing): publishing the setup instructions page.")
+    if not passphrase:
+        print("Not set up yet (JOBBOT_PAGE_PASSWORD missing): publishing the setup instructions page.")
         write_site(out, None, None, salt, repository)
         return 0
     if len(passphrase) < MIN_PASSPHRASE:
@@ -460,8 +571,9 @@ async def publish(
             f"JOBBOT_PAGE_PASSWORD must be at least {MIN_PASSPHRASE} characters; use a long passphrase, "
             "since anyone can download the encrypted page and try to guess it"
         )
-    config = decode_config(config_text)
     key = derive_key(passphrase, salt)
+    saved = config_file is not None and config_file.is_file()
+    config, origin, notices = load_config(config_file, config_text, passphrase, key, salt)
 
     env.ensure_dirs()
     restored = restore_state(state_path, env.db_path, key)
@@ -475,23 +587,51 @@ async def publish(
     db = Database(env.db_path)
     try:
         db.create_all()
-        warnings = await import_config(db, config)
-        if warnings:
-            print(f"{len(warnings)} config warning(s); the details are on your board.")
+        if config is not None:
+            try:
+                notices += await import_config(db, config)
+            except PublishError as exc:
+                notices.append(f"{exc}. Fix it in Settings and save again.")
+        needs_setup = not _has_sources(db)
+        if config is None and not needs_setup:
+            # Nothing to read (the secret was deleted, say): keep what the last run used.
+            config, origin = export_config(db), "state"
+        print(
+            {
+                "board": "Using the settings saved from your board.",
+                "secret": "Using the settings in the JOBBOT_CONFIG secret.",
+                "state": "Using the settings from the last run.",
+                None: "Nothing to scan yet: unlock your board and choose what to look for in Settings.",
+            }[origin if not needs_setup else None]
+        )
+        if notices:
+            print(f"{len(notices)} problem(s) with your settings; the details are on your board.")
 
         from jobbot.pipeline import Scanner, rescore_all
 
         rescore_all(db)  # the profile or filters may have changed since the last run
         forget_old_jobs(db)
-        scan_id = await Scanner(db, env, board_url=board_url or pages_url(repository)).run("schedule")
-        payload = board_payload(db, scan_id, warnings)
-        stats, errors = payload["scan"]["stats"], payload["scan"]["errors"]
-        print(
-            f"Scan {payload['scan']['status']}: {stats.get('fetched', 0)} jobs fetched, {stats.get('new', 0)} new, "
-            f"{len(payload['jobs'])} on the board, {len(payload['hidden'])} hidden by your filters."
+        scan_id = None
+        if not needs_setup:
+            scan_id = await Scanner(db, env, board_url=board_url or pages_url(repository)).run("schedule")
+        payload = board_payload(db, scan_id, notices)
+        payload["settings"] = board_settings(
+            config or {},
+            origin,
+            unreadable=saved and origin != "board",
+            needs_setup=needs_setup,
+            repository=repository,
+            sha=git_blob_sha(config_file) if saved and config_file else None,
         )
-        if problems := len(errors) - len(warnings):
-            print(f"{problems} source(s) reported problems; the details are on your board.")
+        if scan_id is not None:
+            stats, errors = payload["scan"]["stats"], payload["scan"]["errors"]
+            print(
+                f"Scan {payload['scan']['status']}: {stats.get('fetched', 0)} jobs fetched, "
+                f"{stats.get('new', 0)} new, {len(payload['jobs'])} on the board, "
+                f"{len(payload['hidden'])} hidden by your filters."
+            )
+            if problems := len(errors) - len(notices):
+                print(f"{problems} source(s) reported problems; the details are on your board.")
         write_site(out, payload, key, salt, repository)
     finally:
         db.engine.dispose()

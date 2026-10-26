@@ -1,12 +1,16 @@
 # Scans for jobs on a schedule and publishes your encrypted job board to GitHub Pages.
-# Setup: "Hosted job board (GitHub Pages)" in the README. Until the JOBBOT_CONFIG and
-# JOBBOT_PAGE_PASSWORD secrets exist, it publishes a page with the setup steps.
+# Setup: "Hosted job board (GitHub Pages)" in the README. Until the JOBBOT_PAGE_PASSWORD secret
+# exists, it publishes a page with the setup steps.
 name: Job board
 
 on:
   schedule:
     - cron: "17 */6 * * *" # every 6 hours (GitHub may start scheduled runs a little late)
   workflow_dispatch:
+  # Saving Settings on the board commits this file (encrypted): scan with the new settings now.
+  push:
+    paths:
+      - .jobbot/config.enc.json
 
 permissions:
   contents: read
@@ -17,6 +21,8 @@ concurrency:
 
 jobs:
   scan:
+    # GitHub Pages only deploys from the default branch.
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

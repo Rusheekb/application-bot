@@ -265,7 +265,7 @@ def cmd_publish(args: argparse.Namespace, env: Env) -> int:
     import os
     from pathlib import Path
 
-    from jobbot.publish import PublishError, publish
+    from jobbot.publish import CONFIG_FILE, PublishError, publish
 
     if not args.verbose:
         # The workflow log of a public repository is public, and library messages can include
@@ -280,6 +280,7 @@ def cmd_publish(args: argparse.Namespace, env: Env) -> int:
                 os.environ.get("JOBBOT_CONFIG"),
                 os.environ.get("JOBBOT_PAGE_PASSWORD"),
                 board_url=os.environ.get("JOBBOT_BOARD_URL", ""),
+                config_file=Path(CONFIG_FILE),
             )
         )
     except PublishError as exc:
@@ -348,8 +349,8 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser(
         "publish",
-        help="scan and write the encrypted job board for GitHub Pages "
-        "(reads JOBBOT_CONFIG and JOBBOT_PAGE_PASSWORD from the environment)",
+        help="scan and write the encrypted job board for GitHub Pages (reads JOBBOT_PAGE_PASSWORD from "
+        "the environment, and the settings saved from the board, or else JOBBOT_CONFIG)",
     )
     p.add_argument("--out", default="site", help="directory to write the site to")
     p.add_argument(
@@ -358,7 +359,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--verbose", action="store_true", help="show library logs (may include search terms)")
 
     p = sub.add_parser(
-        "export-config", help="print your setup for the JOBBOT_CONFIG secret of the hosted board"
+        "export-config",
+        help="print your setup for the hosted board (for its Settings → Import, or the JOBBOT_CONFIG secret)",
     )
     p.add_argument("--json", action="store_true", help="print readable JSON instead of the compact form")
 

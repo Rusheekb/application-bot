@@ -34,8 +34,8 @@ to quickly.
   find its way through unusual forms (and can submit on its own if you choose).
 - **Notifications** to Discord, Slack, ntfy or any webhook when strong matches appear.
 - **A free hosted job board (optional)**: GitHub Actions scans on a schedule and publishes your
-  matches to an encrypted page on GitHub Pages, so you can review jobs from your phone without
-  keeping a computer on.
+  matches to an encrypted page on GitHub Pages, so you can review jobs and change what it looks
+  for from your phone, without keeping a computer on.
 
 ## Quick start
 
@@ -74,8 +74,11 @@ repositories, and without an Anthropic API key jobs get the built-in estimated s
 
 - **Private, even though Pages sites are public.** The page is encrypted with a passphrase only you
   know (AES-256-GCM, key derived with PBKDF2-SHA256, 600,000 iterations) and decrypted in your
-  browser. The job history kept between runs (in the Actions cache) is encrypted the same way, and
+  browser. Your settings and the job history kept between runs are encrypted the same way, and
   the workflow log, which anyone can read on a public repository, only shows counts.
+- **Settings on the page.** Edit your target titles, locations, filters, companies and job
+  searches in the board's **Settings**. Saving stores them in the repository, encrypted, and
+  starts a new scan right away.
 - **Same engine as the app**: the same sources, filters and scoring, with the best matches first,
   a *Hidden by filters* tab, and New badges for jobs found since your last visit.
 - **Triage in the browser**: save, mark applied or dismiss (keyboard shortcuts work). These choices
@@ -84,32 +87,47 @@ repositories, and without an Anthropic API key jobs get the built-in estimated s
 Setup:
 
 1. In the repository on GitHub, open **Settings → Pages** and set **Source** to **GitHub Actions**.
-2. Write your config, either:
-   - from the local app: **Settings → Hosted job board → Copy config** (or `jobbot export-config`), or
-   - by hand, starting from [`examples/jobbot-config.example.json`](examples/jobbot-config.example.json).
-     Companies can be any careers-page or job-board URL.
-3. In **Settings → Secrets and variables → Actions**, add two repository secrets:
-   - `JOBBOT_CONFIG`: the config from step 2 (the compact `jobbot1:...` text or plain JSON).
-   - `JOBBOT_PAGE_PASSWORD`: a long passphrase, at least 12 characters (four or five random words
-     work well). Anyone can download the encrypted page and try passphrases offline, so don't
-     reuse a short password.
+2. In **Settings → Secrets and variables → Actions**, add a repository secret named
+   `JOBBOT_PAGE_PASSWORD`: a long passphrase, at least 12 characters (four or five random words
+   work well). Anyone can download the encrypted page and try passphrases offline, so don't reuse
+   a short password.
 
    Optional: `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` (free), `JSEARCH_API_KEY` (free tier), and
    `ANTHROPIC_API_KEY` (paid) for Claude's read on your interview chances.
-4. Open **Actions → Job board → Run workflow**. When it finishes, your board is at
+3. Open **Actions → Job board → Run workflow**. When it finishes, your board is at
    `https://<your-username>.github.io/<repository>/`. Unlock it with your passphrase; tick
    *Remember on this device* on your own phone or laptop to skip that next time.
+4. The board opens **Settings**. Fill it in, or paste a config under *Back up or import*: the
+   text from the local app's **Settings → Hosted job board → Copy config** (or
+   `jobbot export-config`), or your edited copy of
+   [`examples/jobbot-config.example.json`](examples/jobbot-config.example.json).
+5. To save, the page needs a GitHub token that can update the repository, because GitHub Pages
+   can't store anything itself. [Create a fine-grained token](https://github.com/settings/personal-access-tokens/new)
+   with **Repository access → Only select repositories** set to this repository and
+   **Permissions → Contents** set to **Read and write** (nothing else), and paste it into
+   Settings. Press **Save and scan**; the board updates when the scan finishes, usually within a
+   few minutes.
+
+How your settings are stored: the page encrypts them with your passphrase and commits them to
+`.jobbot/config.enc.json` in the repository, which starts the workflow. The file is public, but
+unreadable without the passphrase. The token stays in your browser, encrypted with your passphrase,
+and is only sent to `api.github.com`. When it expires, Save asks for a new one.
 
 Good to know:
 
-- To change what it looks for, update the `JOBBOT_CONFIG` secret. The next run picks it up and
-  re-applies your filters to the jobs it already found.
+- Instead of saving settings on the page, you can store the config as a `JOBBOT_CONFIG`
+  repository secret. Settings saved on the board take priority over the secret; once you've
+  saved there, you can delete the secret.
+- Each run re-applies your filters to the jobs it already found, so changing them on a phone
+  takes effect on the whole board.
 - Change the schedule with the `cron` line in `.github/workflows/pages.yml`.
 - Changing the passphrase starts a new job history (the old one can't be decrypted anymore).
+  Your saved settings aren't lost: Settings offers to open them with the old passphrase, and
+  saving them again re-encrypts them with the new one.
 - LinkedIn and Indeed often block requests from cloud servers like GitHub's. Company job boards,
   Remotive, Remote OK, Adzuna and JSearch are more dependable there. Any problems are listed at
   the top of the board.
-- A webhook in `settings.notify` works here too; its messages link straight to the postings.
+- A webhook under *Notifications* works here too; its messages link straight to the postings.
 - GitHub pauses scheduled workflows in public repositories after 60 days without any commits.
   If the board stops updating, re-enable the workflow from the Actions tab.
 - If the workflow's *deploy* job fails within a second or two, GitHub refused the deployment:
@@ -216,7 +234,7 @@ jobbot add-company https://jobs.lever.co/acme [--name Acme]
 jobbot check-company https://boards.greenhouse.io/acme   # fetch and preview, saves nothing
 jobbot add-search "backend engineer" --location "New York, NY" --sources linkedin,indeed
 jobbot apply JOB_ID [--quick] [--submit] [--headed]   # fill an application (--quick: no AI, no key)
-jobbot export-config [--json]                         # your setup, for the hosted board's JOBBOT_CONFIG
+jobbot export-config [--json]                         # your setup, to import on the hosted board
 jobbot publish [--out site] [--state FILE]            # scan and write the encrypted board (used by the workflow)
 ```
 

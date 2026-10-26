@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - .jobbot/** # settings saved from the hosted job board
   pull_request:
 
 jobs:
