@@ -1,0 +1,35 @@
+{
+  "status": "OK",
+  "request_id": "req-1",
+  "parameters": {"query": "backend engineer in new york"},
+  "data": [
+    {
+      "job_id": "QWxwaGFCYWNrZW5k",
+      "employer_name": "Initrode",
+      "employer_logo": null,
+      "employer_website": "https://initrode.example",
+      "job_publisher": "LinkedIn",
+      "job_employment_type": "FULLTIME",
+      "job_title": "Backend Engineer",
+      "job_apply_link": "https://www.linkedin.com/jobs/view/1234567890",
+      "job_apply_is_direct": false,
+      "apply_options": [
+        {"publisher": "LinkedIn", "apply_link": "https://www.linkedin.com/jobs/view/1234567890", "is_direct": false},
+        {"publisher": "Initrode Careers", "apply_link": "https://boards.greenhouse.io/initrode/jobs/555", "is_direct": true}
+      ],
+      "job_description": "Build APIs in Go. 4+ years of experience.",
+      "job_is_remote": false,
+      "job_posted_at_timestamp": 1761400000,
+      "job_posted_at_datetime_utc": "2026-10-25T13:46:40.000Z",
+      "job_city": "New York",
+      "job_state": "NY",
+      "job_country": "US",
+      "job_location": "New York, NY",
+      "job_min_salary": 150000,
+      "job_max_salary": 180000,
+      "job_salary_currency": "USD",
+      "job_salary_period": "YEAR",
+      "job_google_link": "https://www.google.com/search?q=jobs&ibp=htl;jobs"
+    }
+  ]
+}

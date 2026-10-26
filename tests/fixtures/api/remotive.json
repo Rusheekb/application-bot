@@ -1,0 +1,21 @@
+{
+  "0-legal-notice": "Remotive API Legal Notice",
+  "job-count": 1,
+  "total-job-count": 1,
+  "jobs": [
+    {
+      "id": 1900001,
+      "url": "https://remotive.com/remote-jobs/software-dev/senior-python-developer-1900001",
+      "title": "Senior Python Developer",
+      "company_name": "Massive Dynamic",
+      "company_logo": "https://remotive.com/job/1900001/logo",
+      "category": "Software Development",
+      "tags": ["python", "django"],
+      "job_type": "full_time",
+      "publication_date": "2026-10-24T10:20:00",
+      "candidate_required_location": "USA",
+      "salary": "$130k - $160k",
+      "description": "<p>Work on Django services. 5+ years of experience.</p>"
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Sources</h1>
+    <p class="muted">Where jobbot looks for jobs. Each scan checks every enabled search and company. <a href="/scans">Scan history</a></p>
+  </div>
+</div>
+{% if message %}<div class="notice good">{{ message }}</div>{% endif %}
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+<div class="stack">
+<section class="card" id="companies">
+  <div class="card-head"><h2>Companies you want to work for</h2></div>
+  <p class="muted">Paste a company's careers page or job board link. jobbot reads Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee boards directly, which gives the freshest postings with full descriptions and direct application links. Only jobs matching your target titles are kept.</p>
+  <form method="post" action="/companies" class="form-grid">
+    <div class="field span-2">
+      <label for="company-url">Careers page or job board URL</label>
+      <input id="company-url" name="url" placeholder="https://boards.greenhouse.io/stripe or https://acme.com/careers" required>
+    </div>
+    <div class="field">
+      <label for="company-name">Name <span class="hint">optional</span></label>
+      <input id="company-name" name="name" placeholder="Detected automatically">
+    </div>
+    <div class="field" style="justify-content:flex-end"><button class="btn btn-primary" type="submit">Add company</button></div>
+  </form>
+  <details style="margin-top:.75rem">
+    <summary>Add several at once</summary>
+    <form method="post" action="/companies/bulk" style="margin-top:.5rem">
+      <textarea name="urls" rows="5" placeholder="One URL per line&#10;https://jobs.lever.co/acme&#10;https://jobs.ashbyhq.com/example&#10;https://example.wd5.myworkdayjobs.com/External"></textarea>
+      <div class="form-actions"><button class="btn" type="submit">Add all</button></div>
+    </form>
+  </details>
+  {% if companies %}
+    <div class="list-rows" style="margin-top:1rem">
+      {% for company in companies %}{% include "partials/company_row.html" %}{% endfor %}
+    </div>
+  {% endif %}
+</section>
+
+<section class="card" id="searches">
+  <div class="card-head"><h2>Job board searches</h2></div>
+  <p class="muted">Keyword searches across job boards. LinkedIn, Indeed, Glassdoor, ZipRecruiter and Google Jobs are scraped with JobSpy; those sites don't allow scraping and rate-limit heavily, so keep searches focused. Adzuna and JSearch use official APIs (free keys).</p>
+  {% if searches %}
+    <div class="list-rows">
+      {% for search in searches %}
+        <div class="row row-search">
+          <div>
+            <strong>{{ search.keywords }}</strong>
+            <span class="muted">{% if search.location %}in {{ search.location }}{% endif %}{% if search.remote_only %} · remote only{% endif %}</span>
+            {% if not search.enabled %}<span class="chip warn">Paused</span>{% endif %}
+            <div class="chips">{% for s in search.sources %}<span class="chip{{ ' warn' if availability.get(s) }}" title="{{ availability.get(s) }}">{{ search_sources.get(s, s) }}</span>{% endfor %}</div>
+            {% if search.last_status %}<div class="muted" style="font-size:.85rem;margin-top:.3rem">Last run {{ search.last_run_at|ago }}: {{ search.last_status }}</div>{% endif %}
+          </div>
+          <div class="btn-row">
+            <form method="post" action="/searches/{{ search.id }}/toggle" class="inline-form"><button class="btn btn-sm">{{ 'Pause' if search.enabled else 'Resume' }}</button></form>
+            <form method="post" action="/searches/{{ search.id }}/delete" class="inline-form"><button class="btn btn-sm btn-ghost">Remove</button></form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <hr>
+  {% endif %}
+  <form method="post" action="/searches" class="form-grid">
+    <div class="field">
+      <label for="keywords">Keywords</label>
+      <input id="keywords" name="keywords" placeholder="backend engineer" required>
+    </div>
+    <div class="field">
+      <label for="location">Location</label>
+      <input id="location" name="location" placeholder="New York, NY">
+    </div>
+    <div class="field">
+      <label for="results">Results per site</label>
+      <input id="results" name="results_per_source" type="number" min="5" max="100" value="25">
+    </div>
+    <div class="field" style="justify-content:flex-end">
+      <label class="check"><input type="checkbox" name="remote_only"> Remote only</label>
+    </div>
+    <fieldset class="field span-all">
+      <label>Sites</label>
+      <div class="btn-row">
+        {% for key, label in search_sources.items() %}
+          <label class="check" title="{{ availability.get(key) }}">
+            <input type="checkbox" name="sources" value="{{ key }}" {{ 'checked' if key in default_sources and not availability.get(key) }} {{ 'disabled' if availability.get(key) }}>
+            {{ label }}{% if availability.get(key) %} <span class="faint">({{ availability.get(key) }})</span>{% endif %}
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="span-all form-actions" style="margin-top:0"><button class="btn btn-primary" type="submit">Add search</button></div>
+  </form>
+</section>
+
+<section class="card" id="filters">
+  <div class="card-head"><h2>Filters</h2></div>
+  <p class="muted">Jobs that fail a filter are kept under the <a href="/jobs?tab=hidden">Hidden</a> tab with the reason, so you can see what's being filtered out. Separate entries with commas or new lines.</p>
+  <form method="post" action="/filters" class="form-grid">
+    <div class="field span-2">
+      <label for="title_include">Also keep titles containing</label>
+      <textarea id="title_include" name="title_include" rows="2" placeholder="Added to your target titles: data engineer, analytics engineer">{{ filters.title_include|join(', ') }}</textarea>
+      <span class="hint">Company boards only keep jobs whose title matches a target title{% if profile.target_titles %} ({{ profile.target_titles|join(', ') }}){% endif %}, a search keyword, or one of these.</span>
+    </div>
+    <div class="field span-2">
+      <label for="title_exclude">Hide titles containing</label>
+      <textarea id="title_exclude" name="title_exclude" rows="2" placeholder="intern, director, principal, manager">{{ filters.title_exclude|join(', ') }}</textarea>
+    </div>
+    <div class="field span-2">
+      <label for="locations">Acceptable locations</label>
+      <textarea id="locations" name="locations" rows="2" placeholder="New York, NY, Brooklyn, United States (leave empty for anywhere)">{{ filters.locations|join(', ') }}</textarea>
+    </div>
+    <div class="field span-2">
+      <label for="location_exclude">Hide locations containing</label>
+      <textarea id="location_exclude" name="location_exclude" rows="2" placeholder="India, EMEA, London">{{ filters.location_exclude|join(', ') }}</textarea>
+    </div>
+    <div class="field span-2">
+      <label for="description_exclude">Hide descriptions mentioning</label>
+      <textarea id="description_exclude" name="description_exclude" rows="2" placeholder="unpaid, commission only">{{ filters.description_exclude|join(', ') }}</textarea>
+    </div>
+    <div class="field span-2">
+      <label for="company_exclude">Hide companies</label>
+      <textarea id="company_exclude" name="company_exclude" rows="2" placeholder="Your current employer, staffing agencies…">{{ filters.company_exclude|join(', ') }}</textarea>
+    </div>
+    <div class="field">
+      <label for="min_salary">Minimum salary (per year)</label>
+      <input id="min_salary" name="min_salary" inputmode="numeric" value="{{ filters.min_salary or '' }}" placeholder="Only applied when a salary is listed">
+    </div>
+    <div class="field">
+      <label for="max_years_gap">Max years above your experience</label>
+      <input id="max_years_gap" name="max_years_gap" type="number" min="0" max="20" value="{{ filters.max_years_gap if filters.max_years_gap is not none else '' }}">
+      <span class="hint">Hide jobs asking for more than your years + this. Blank turns it off.</span>
+    </div>
+    <div class="field">
+      <label for="max_age_days">Hide postings older than (days)</label>
+      <input id="max_age_days" name="max_age_days" type="number" min="1" max="365" value="{{ filters.max_age_days or '' }}">
+    </div>
+    <fieldset class="field span-all">
+      <label class="check"><input type="checkbox" name="include_remote" {{ 'checked' if filters.include_remote }}> Include remote jobs (even outside your locations)</label>
+      <label class="check"><input type="checkbox" name="hide_no_sponsorship" {{ 'checked' if filters.hide_no_sponsorship }}> Hide jobs that say they can't sponsor visas <span class="faint">(only when your profile says you need sponsorship)</span></label>
+      <label class="check"><input type="checkbox" name="hide_clearance_required" {{ 'checked' if filters.hide_clearance_required }}> Hide jobs requiring an active security clearance <span class="faint">(unless your profile lists one)</span></label>
+    </fieldset>
+    <div class="span-all form-actions"><button class="btn btn-primary" type="submit">Save filters</button></div>
+  </form>
+</section>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+<div class="row row-company" id="company-{{ company.id }}">
+  <div>
+    <strong>{{ company.name }}</strong>
+    <span class="chip">{{ ats_labels.get(company.ats, company.ats) }}</span>
+    {% if not company.enabled %}<span class="chip warn">Paused</span>{% endif %}
+    <div class="muted" style="font-size:.85rem">
+      <span class="mono">{{ company.slug }}</span>
+      {% if company.last_status %} · {{ company.last_status }}{% endif %}
+      {% if company.last_checked_at %} <span class="faint">({{ company.last_checked_at|ago }})</span>{% endif %}
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-sm" hx-post="/companies/{{ company.id }}/check" hx-target="#company-{{ company.id }}" hx-swap="outerHTML" hx-indicator="#check-{{ company.id }}">Check <span id="check-{{ company.id }}" class="spinner htmx-indicator"></span></button>
+    <form method="post" action="/companies/{{ company.id }}/toggle" class="inline-form"><button class="btn btn-sm">{{ 'Pause' if company.enabled else 'Resume' }}</button></form>
+    <form method="post" action="/companies/{{ company.id }}/delete" class="inline-form" data-confirm="Remove {{ company.name }}?"><button class="btn btn-sm btn-ghost">Remove</button></form>
+  </div>
+</div>

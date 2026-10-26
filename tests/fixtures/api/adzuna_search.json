@@ -1,0 +1,21 @@
+{
+  "count": 1,
+  "mean": 135000,
+  "results": [
+    {
+      "id": "4987654321",
+      "title": "<strong>Backend</strong> Engineer",
+      "description": "Acme is looking for a backend engineer with 3+ years of experience in Python &amp; AWS…",
+      "created": "2026-10-23T14:00:00Z",
+      "redirect_url": "https://www.adzuna.com/land/ad/4987654321?se=abc&v=def",
+      "adref": "eyJhbGciOiJIUzI1NiJ9",
+      "company": {"display_name": "Acme", "__CLASS__": "Adzuna::API::Response::Company"},
+      "location": {"display_name": "New York, New York", "area": ["US", "New York", "New York"]},
+      "category": {"label": "IT Jobs", "tag": "it-jobs"},
+      "salary_min": 140000,
+      "salary_max": 170000,
+      "salary_is_predicted": "0",
+      "contract_time": "full_time"
+    }
+  ]
+}

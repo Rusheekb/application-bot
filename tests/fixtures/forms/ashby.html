@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Modeled on an Ashby application page (jobs.ashbyhq.com/{org}/{id}/application) for offline tests. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Platform Engineer @ Acme</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 2rem auto; }
+  .ashby-application-form-field-entry { margin: 14px 0; }
+  ._yesno button.selected { background: #333; color: #fff; }
+</style></head>
+<body>
+<h1>Platform Engineer</h1>
+<div id="form-root">
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="_systemfield_name">Name<span class="required">*</span></label>
+    <input id="_systemfield_name" name="_systemfield_name" type="text" placeholder="Type here..." required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="_systemfield_email">Email<span class="required">*</span></label>
+    <input id="_systemfield_email" name="_systemfield_email" type="email" placeholder="hello@example.com" required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="_systemfield_resume">Resume<span class="required">*</span></label>
+    <input id="_systemfield_resume" type="file" required>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title">Are you open to relocating to Seattle?</label>
+    <div class="_yesno">
+      <button type="button" class="opt" onclick="pick(this)">Yes</button>
+      <button type="button" class="opt" onclick="pick(this)">No</button>
+    </div>
+  </div>
+  <div class="ashby-application-form-field-entry">
+    <label class="ashby-application-form-question-title" for="salary">What are your salary expectations?</label>
+    <input id="salary" type="text">
+  </div>
+  <button type="button" class="ashby-application-form-submit-button" onclick="submitForm()">Submit Application</button>
+</div>
+<script>
+  function pick(btn) {
+    btn.parentElement.querySelectorAll('button').forEach((b) => b.classList.remove('selected'));
+    btn.classList.add('selected');
+  }
+  function submitForm() {
+    window.submitted = (window.submitted || 0) + 1;
+    document.getElementById('form-root').innerHTML = '<h2>Thanks for applying!</h2><p>We have received your application.</p>';
+  }
+</script>
+</body>
+</html>

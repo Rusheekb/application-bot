@@ -1,0 +1,15 @@
+<div id="scan-status" class="scan-status" hx-get="/scan/status" hx-trigger="{{ 'every 2s' if running else 'every 30s' }}" hx-swap="outerHTML">
+  {% if running %}
+    <span class="spinner" aria-hidden="true"></span>
+    <span>{{ (last.progress if last and last.progress) or "Scanning…" }}</span>
+  {% else %}
+    {% if just_finished %}
+      <a href="/jobs?tab=new&sort=found">{{ last.stats.new }} new job{{ 's' if last.stats.new != 1 }} · show</a>
+    {% endif %}
+    <span>
+      {% if last %}<a href="/scans" class="muted">Last scan {{ last.started_at|ago }}{% if last.status == 'error' %} (failed){% elif last.status == 'partial' %} (with errors){% endif %}</a>{% else %}No scans yet{% endif %}
+      {% if next_at %} · next {{ next_at|until }}{% endif %}
+    </span>
+    <button class="btn btn-sm btn-primary" hx-post="/scan" hx-target="#scan-status" hx-swap="outerHTML">Scan now</button>
+  {% endif %}
+</div>

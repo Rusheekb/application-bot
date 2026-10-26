@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/jobs">← Jobs</a></p>
+
+{% if job.hidden_reason and not job.show_anyway %}
+<div class="notice warn">
+  Hidden by your filters: <strong>{{ job.hidden_reason }}</strong>.
+  <button class="btn btn-sm" hx-post="/jobs/{{ job.id }}/show">Show it anyway</button>
+  <a href="/sources#filters">Edit filters</a>
+</div>
+{% endif %}
+{% if job.closed_at %}
+<div class="notice bad">This posting disappeared from {{ job.company }}'s job board {{ job.closed_at|ago }}, so it has probably closed.</div>
+{% endif %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ job.title }}</h1>
+    <div class="job-meta">
+      <strong>{{ job.company }}</strong>
+      {% if job.location %}<span class="sep">·</span>{{ job.location }}{% endif %}
+      {% if job.workplace and job.workplace not in (job.location or '')|lower %}<span class="sep">·</span>{{ job.workplace|capitalize }}{% endif %}
+      {% if job.employment_type %}<span class="sep">·</span>{{ job.employment_type }}{% endif %}
+      {% if job|salary %}<span class="sep">·</span>{{ job|salary }}{% endif %}
+    </div>
+    <div class="job-meta">
+      {% if job.posted_at %}Posted {{ job.posted_at|ago }}<span class="sep">·</span>{% endif %}Found {{ job.first_seen_at|ago }} via {{ job.found_by or (job.source|source_label) }}
+      {% if job.years_required %}<span class="sep">·</span>Asks for {{ job.years_required }}+ years{% endif %}
+    </div>
+  </div>
+  <div class="btn-row">
+    <a class="btn btn-primary" href="{{ (job.apply_url or job.url)|safe_href }}" target="_blank" rel="noopener noreferrer">Apply on their site ↗</a>
+    {% if job.apply_url and job.apply_url != job.url %}<a class="btn" href="{{ job.url|safe_href }}" target="_blank" rel="noopener noreferrer">View posting ↗</a>{% endif %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="stack">
+    <section class="card">
+      <h2>Status</h2>
+      {% include "partials/status_control.html" %}
+      <div class="field" style="margin-top: .9rem">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="Recruiter name, referral, interview dates…"
+          hx-post="/jobs/{{ job.id }}/notes" hx-trigger="change, keyup changed delay:1500ms" hx-swap="none">{{ job.notes or '' }}</textarea>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Job description</h2>
+      <div class="description">{{ job.description or "No description available. Open the posting to read it." }}</div>
+    </section>
+
+    {% if job.sources and job.sources|length > 1 %}
+    <section class="card">
+      <h3>Also listed on</h3>
+      <ul>
+        {% for entry in job.sources %}<li><a href="{{ entry.url|safe_href }}" target="_blank" rel="noopener noreferrer">{{ entry.source|source_label }}</a></li>{% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="stack">
+    <section class="card" id="fit-panel">
+      {% include "partials/fit_panel.html" %}
+    </section>
+
+    <section class="card">
+      <h2>Apply with the agent</h2>
+      {% if not settings.apply.enabled %}
+        <p class="muted">Auto-apply is off. Turn it on in <a href="/settings#apply">Settings</a> to let Claude fill in this application for you.</p>
+      {% elif not ai_available %}
+        <p class="muted">Add an Anthropic API key to use the apply agent.</p>
+      {% else %}
+        <p class="muted">
+          {% if support == 'supported' %}This application is on {{ job.ats|source_label }}, which the agent handles well.
+          {% elif support == 'login' %}This site ({{ job.ats|source_label }}) usually requires an account, so the agent will likely stop and hand it back to you.
+          {% else %}The agent will try this site; unfamiliar forms may need your help.{% endif %}
+        </p>
+        <div class="btn-row">
+          <button class="btn btn-primary" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "review"}'>Fill application for review</button>
+          {% if settings.apply.mode == 'submit' %}
+          <button class="btn" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "submit"}' hx-confirm="Let the agent submit this application without asking you first?">Fill &amp; submit</button>
+          {% endif %}
+        </div>
+        <p class="faint" style="margin-top:.6rem;font-size:.82rem">The agent fills the form from your profile and stops before submitting so you can check it.</p>
+      {% endif %}
+      {% if runs %}
+        <hr>
+        <h3>Previous runs</h3>
+        <ul class="timeline">
+          {% for run in runs %}
+            <li><a href="/applications/{{ run.id }}">{{ run.status|run_status }}</a> <span class="faint">· {{ run.mode }} · {{ run.created_at|ago }}{% if run.id in live_ids %} · browser open{% endif %}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </section>
+
+    <section class="card" id="cover-letter">
+      {% include "partials/cover_letter.html" %}
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>Danger zone</summary>
+        <p class="muted" style="margin-top:.5rem">Deleting removes this job and its application runs. It may come back if a later scan finds it again; dismiss it instead to keep it out of your queue.</p>
+        <button class="btn btn-sm btn-danger" hx-post="/jobs/{{ job.id }}/delete" hx-confirm="Delete this job?">Delete job</button>
+      </details>
+    </section>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,62 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4001",
+      "data_compliance": [{"type": "gdpr", "requires_consent": false, "requires_processing_consent": false, "requires_retention_consent": false, "retention_period": null}],
+      "internal_job_id": 3001,
+      "location": {"name": "New York, NY"},
+      "metadata": null,
+      "id": 4001,
+      "updated_at": "2026-10-22T10:00:00-04:00",
+      "requisition_id": "R-100",
+      "title": "Backend Engineer",
+      "company_name": "Acme",
+      "first_published": "2026-10-21T09:00:00-04:00",
+      "content": "&lt;p&gt;Acme is hiring a &lt;strong&gt;Backend Engineer&lt;/strong&gt; to build our payments platform.&lt;/p&gt;&lt;h3&gt;What you'll need&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;p&gt;3+ years of experience building services in Python&lt;/p&gt;&lt;/li&gt;&lt;li&gt;&lt;p&gt;PostgreSQL and AWS&lt;/p&gt;&lt;/li&gt;&lt;/ul&gt;&lt;p&gt;The base salary range for this role is $140,000 - $170,000.&lt;/p&gt;",
+      "departments": [{"id": 11, "name": "Engineering", "child_ids": [], "parent_id": null}],
+      "offices": [{"id": 21, "name": "New York", "location": "New York, NY", "child_ids": [], "parent_id": null}]
+    },
+    {
+      "absolute_url": "https://acme.com/careers?gh_jid=4002",
+      "internal_job_id": 3002,
+      "location": {"name": "San Francisco, CA"},
+      "metadata": null,
+      "id": 4002,
+      "updated_at": "2026-10-20T10:00:00-07:00",
+      "requisition_id": "R-101",
+      "title": "Senior Staff Software Engineer, Infrastructure",
+      "first_published": "2026-10-18T09:00:00-07:00",
+      "content": "&lt;p&gt;You have 10+ years of experience running distributed systems.&lt;/p&gt;",
+      "departments": [],
+      "offices": []
+    },
+    {
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4003",
+      "internal_job_id": 3003,
+      "location": {"name": "New York, NY"},
+      "metadata": null,
+      "id": 4003,
+      "updated_at": "2026-10-21T10:00:00-04:00",
+      "requisition_id": "R-102",
+      "title": "Account Executive",
+      "content": "&lt;p&gt;Sell Acme.&lt;/p&gt;",
+      "departments": [{"id": 12, "name": "Sales"}],
+      "offices": []
+    },
+    {
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4004",
+      "internal_job_id": 3004,
+      "location": {"name": "Remote - US"},
+      "metadata": null,
+      "id": 4004,
+      "updated_at": "2026-10-23T10:00:00-04:00",
+      "requisition_id": "R-103",
+      "title": "Software Engineer, Payments",
+      "first_published": "2026-10-23T08:00:00-04:00",
+      "content": "&lt;p&gt;2+ years of experience with Go or Python. We are unable to sponsor visas for this role.&lt;/p&gt;",
+      "departments": [{"id": 11, "name": "Engineering"}],
+      "offices": []
+    }
+  ],
+  "meta": {"total": 4}
+}

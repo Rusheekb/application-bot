@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p class="muted">API keys live in your <code>.env</code> file; everything else is here.</p>
+  </div>
+</div>
+{% if message %}<div class="notice good">{{ message }}</div>{% endif %}
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+<section class="card" style="margin-bottom:1rem">
+  <h2>Integrations</h2>
+  <div class="table-wrap">
+    <table>
+      <tbody>
+        {% for item in integrations %}
+          <tr>
+            <td style="width:2rem">{% if item.ok %}<span class="chip good">On</span>{% else %}<span class="chip">Off</span>{% endif %}</td>
+            <td><strong>{{ item.name }}</strong><div class="muted" style="font-size:.85rem">{{ item.detail }}</div></td>
+            <td class="muted" style="font-size:.85rem">{% if not item.ok %}<code>{{ item.fix }}</code>{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<form method="post" action="/settings" class="stack">
+  <section class="card" id="scanning">
+    <h2>Scanning</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label for="scan_interval_hours">Scan every (hours)</label>
+        <input id="scan_interval_hours" name="scan_interval_hours" type="number" min="0" max="168" step="0.5" value="{{ settings.scan_interval_hours }}">
+        <span class="hint">0 turns off automatic scans. Scans run while jobbot is running.</span>
+      </div>
+      <div class="field">
+        <label for="jobspy_hours_old">Job boards: only postings from the last (hours)</label>
+        <input id="jobspy_hours_old" name="jobspy_hours_old" type="number" min="1" max="720" value="{{ settings.jobspy_hours_old }}">
+      </div>
+      <div class="field">
+        <label for="jobspy_country">Job boards: country</label>
+        <select id="jobspy_country" name="jobspy_country">
+          {% for c in countries %}<option value="{{ c }}" {{ 'selected' if c == settings.jobspy_country }}>{{ c.upper() if c in ('usa', 'uk') else c.title() }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="ai">
+    <h2>AI (Claude)</h2>
+    <p class="muted">Claude reads each promising job against your resume and estimates how realistic an interview is. Scoring runs on new jobs after each scan, best estimated matches first.</p>
+    <div class="form-grid">
+      <label class="check span-all"><input type="checkbox" name="ai_enabled" {{ 'checked' if settings.ai.enabled }}> Use Claude for fit analysis, resume parsing, cover letters and the apply agent</label>
+      <div class="field span-2">
+        <label for="model">Model</label>
+        <select id="model" name="model">
+          {% for key, label in models.items() %}<option value="{{ key }}" {{ 'selected' if key == settings.ai.model }}>{{ label }}</option>{% endfor %}
+          {% if settings.ai.model not in models %}<option value="{{ settings.ai.model }}" selected>{{ settings.ai.model }}</option>{% endif %}
+        </select>
+        <span class="hint">Scoring many jobs adds up: Haiku costs a few cents per hundred jobs, Opus noticeably more. Prompt caching keeps your resume cheap to re-send.</span>
+      </div>
+      <div class="field">
+        <label for="scoring_effort">Scoring effort</label>
+        <select id="scoring_effort" name="scoring_effort">{% for e in efforts %}<option {{ 'selected' if e == settings.ai.scoring_effort }}>{{ e }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="agent_effort">Apply agent effort</label>
+        <select id="agent_effort" name="agent_effort">{% for e in efforts %}<option {{ 'selected' if e == settings.ai.agent_effort }}>{{ e }}</option>{% endfor %}</select>
+      </div>
+      <div class="field">
+        <label for="max_scores_per_scan">Max jobs analyzed per scan</label>
+        <input id="max_scores_per_scan" name="max_scores_per_scan" type="number" min="0" max="500" value="{{ settings.ai.max_scores_per_scan }}">
+      </div>
+      <div class="field">
+        <label for="min_heuristic_score">Only analyze jobs with an estimated score of at least</label>
+        <input id="min_heuristic_score" name="min_heuristic_score" type="number" min="0" max="100" value="{{ settings.ai.min_heuristic_score }}">
+      </div>
+      <label class="check span-all"><input type="checkbox" name="fallbacks" {{ 'checked' if settings.ai.fallbacks }}> Retry on a fallback model if Claude's safety filters decline a request (recommended)</label>
+    </div>
+  </section>
+
+  <section class="card" id="apply">
+    <h2>Auto-apply</h2>
+    <p class="muted">An agent opens the application in a browser and fills it in from your profile and resume. In review mode it stops before submitting and shows you every answer. It never solves CAPTCHAs, creates accounts or invents experience; it hands those cases back to you.</p>
+    <div class="form-grid">
+      <label class="check span-all"><input type="checkbox" name="apply_enabled" {{ 'checked' if settings.apply.enabled }}> Enable the apply agent</label>
+      <fieldset class="field span-all">
+        <label>Mode</label>
+        <label class="check"><input type="radio" name="apply_mode" value="review" {{ 'checked' if settings.apply.mode == 'review' }}> <span><strong>Review first</strong> (recommended): fill in the form and wait for your approval before submitting</span></label>
+        <label class="check"><input type="radio" name="apply_mode" value="submit" {{ 'checked' if settings.apply.mode == 'submit' }}> <span><strong>Submit automatically</strong>: submit without asking when everything required is filled in. The agent still stops when it's unsure.</span></label>
+      </fieldset>
+      <label class="check span-2"><input type="checkbox" name="headless" {{ 'checked' if settings.apply.headless }}> Run the browser in the background (headless). Turn off to watch it work and take over when needed (needs a display).</label>
+      <label class="check span-2"><input type="checkbox" name="allow_consent_checkboxes" {{ 'checked' if settings.apply.allow_consent_checkboxes }}> Let the agent tick required privacy-notice and accuracy acknowledgements</label>
+      <label class="check span-all"><input type="checkbox" name="auto_after_scan" {{ 'checked' if settings.apply.auto_after_scan }}> After each scan, start the agent for new jobs with an AI score of at least the threshold below</label>
+      <div class="field">
+        <label for="auto_min_score">Auto-apply threshold (AI score)</label>
+        <input id="auto_min_score" name="auto_min_score" type="number" min="0" max="100" value="{{ settings.apply.auto_min_score }}">
+      </div>
+      <div class="field">
+        <label for="daily_limit">Max automatic runs per day</label>
+        <input id="daily_limit" name="daily_limit" type="number" min="0" max="100" value="{{ settings.apply.daily_limit }}">
+      </div>
+      <div class="field">
+        <label for="max_steps">Max browser actions per application</label>
+        <input id="max_steps" name="max_steps" type="number" min="5" max="150" value="{{ settings.apply.max_steps }}">
+      </div>
+      <div class="field">
+        <label for="live_session_minutes">Keep a paused browser open for (minutes)</label>
+        <input id="live_session_minutes" name="live_session_minutes" type="number" min="5" max="720" value="{{ settings.apply.live_session_minutes }}">
+        <span class="hint">After that, approving re-runs the agent with your reviewed answers.</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="notifications">
+    <h2>Notifications</h2>
+    <p class="muted">Get new high-scoring jobs pushed to Discord, Slack, ntfy.sh or any webhook after each scan.</p>
+    <div class="form-grid">
+      <div class="field span-2">
+        <label for="webhook_url">Webhook URL</label>
+        <input id="webhook_url" name="webhook_url" type="url" value="{{ settings.notify.webhook_url }}" placeholder="https://discord.com/api/webhooks/… or https://ntfy.sh/your-topic">
+      </div>
+      <div class="field">
+        <label for="notify_min_score">Notify for scores of at least</label>
+        <input id="notify_min_score" name="notify_min_score" type="number" min="0" max="100" value="{{ settings.notify.min_score }}">
+      </div>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save settings</button>
+  </div>
+</form>
+
+<section class="card" style="margin-top:1rem">
+  <h2>Tools</h2>
+  <div class="btn-row">
+    <form method="post" action="/settings/test-notification" class="inline-form"><button class="btn">Send a test notification</button></form>
+    <form method="post" action="/settings/rescore" class="inline-form"><button class="btn">Re-apply filters and estimated scores to all jobs</button></form>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+<div class="card-head">
+  <h2>Cover letter</h2>
+  {% if ai_available %}
+  <button class="btn btn-sm" hx-post="/jobs/{{ job.id }}/cover-letter" hx-target="#cover-letter" hx-indicator="#cl-spinner"
+    {% if job.cover_letter %}hx-confirm="Replace your current cover letter with a new draft?"{% endif %}>
+    {{ 'Redraft' if job.cover_letter else 'Draft with AI' }} <span id="cl-spinner" class="spinner htmx-indicator"></span>
+  </button>
+  {% endif %}
+</div>
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+{% if job.cover_letter %}
+  <textarea name="cover_letter" rows="14" hx-post="/jobs/{{ job.id }}/cover-letter/save" hx-trigger="change, keyup changed delay:2000ms" hx-swap="none" aria-label="Cover letter">{{ job.cover_letter }}</textarea>
+  <p class="faint" style="font-size:.8rem;margin:.4rem 0 0">Edits save automatically. The apply agent uploads this letter when a form asks for one.</p>
+{% else %}
+  <p class="muted">{% if ai_available %}Draft a tailored letter from your resume and this posting. It's only used if you keep it.{% else %}Add an Anthropic API key to draft cover letters.{% endif %}</p>
+{% endif %}

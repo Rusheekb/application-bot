@@ -1,0 +1,7 @@
+<div class="segmented" id="status-control" role="group" aria-label="Job status">
+  {% for s in statuses %}
+    <button class="btn btn-sm{{ ' active' if job.status == s }}" aria-pressed="{{ 'true' if job.status == s else 'false' }}"
+      hx-post="/jobs/{{ job.id }}/status" hx-vals='{"status": "{{ s }}", "tab": "detail"}' hx-target="#status-control" hx-swap="outerHTML">{{ s|status_label }}</button>
+  {% endfor %}
+</div>
+{% if job.applied_at %}<p class="faint" style="margin:.5rem 0 0;font-size:.85rem">Applied {{ job.applied_at|ago }}</p>{% endif %}

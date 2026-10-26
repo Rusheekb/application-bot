@@ -1,0 +1,14 @@
+{
+  "id": "744000098765432",
+  "name": "Software Engineer II",
+  "postingUrl": "https://jobs.smartrecruiters.com/Umbrella/744000098765432-software-engineer-ii",
+  "applyUrl": "https://jobs.smartrecruiters.com/oneclick-ui/company/Umbrella/publication/aaaa-bbbb?dcr_ci=Umbrella",
+  "jobAd": {
+    "sections": {
+      "companyDescription": {"title": "Company Description", "text": "<p>Umbrella makes medicine.</p>"},
+      "jobDescription": {"title": "Job Description", "text": "<p>Build lab software in Java.</p>"},
+      "qualifications": {"title": "Qualifications", "text": "<ul><li>3+ years of experience with Java</li></ul>"},
+      "additionalInformation": {"title": "Additional Information", "text": "<p>Salary: $110,000 - $135,000 per year</p>"}
+    }
+  }
+}

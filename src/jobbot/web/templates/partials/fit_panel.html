@@ -1,0 +1,43 @@
+{% set band = job.score|band %}
+<div class="card-head">
+  <h2>Your chances</h2>
+  {% if ai_available %}
+  <button class="btn btn-sm" hx-post="/jobs/{{ job.id }}/analyze" hx-target="#fit-panel" hx-indicator="#fit-spinner">
+    {{ 'Re-analyze' if job.fit else 'Analyze with AI' }} <span id="fit-spinner" class="spinner htmx-indicator"></span>
+  </button>
+  {% endif %}
+</div>
+{% if error %}<div class="notice bad">{{ error }}</div>{% elif job.fit_error and not job.fit %}<div class="notice warn">Last AI analysis failed: {{ job.fit_error }}</div>{% endif %}
+<div class="fit-head">
+  <div class="score big {{ band }}">{{ job.score if job.score is not none else '–' }}<small>{{ 'AI' if job.score_kind == 'ai' else 'est.' }}</small></div>
+  <div>
+    {% if job.fit %}
+      <strong>{{ job.likelihood|likelihood }}</strong>
+      <div class="muted" style="font-size:.85rem">Seniority: {{ {'under': 'role is above your level', 'match': 'good match', 'over': 'you may be overqualified', 'unclear': 'unclear'}[job.fit.seniority_fit] }}</div>
+    {% else %}
+      <strong>Estimated fit</strong>
+      <div class="muted" style="font-size:.85rem">From title, skills, experience and freshness.{% if ai_available %} Run the AI analysis for a realistic read.{% endif %}</div>
+    {% endif %}
+  </div>
+</div>
+{% if job.fit %}
+  <p>{{ job.fit.summary }}</p>
+  {% if job.fit.dealbreakers %}<h3>Dealbreakers</h3><ul class="fit-list stop">{% for x in job.fit.dealbreakers %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  {% if job.fit.strengths %}<h3>Why you fit</h3><ul class="fit-list plus">{% for x in job.fit.strengths %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  {% if job.fit.gaps %}<h3>Gaps</h3><ul class="fit-list minus">{% for x in job.fit.gaps %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  {% if job.fit.tips %}<h3>To stand out</h3><ul class="fit-list tip">{% for x in job.fit.tips %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  <p class="faint" style="font-size:.8rem;margin:0">Analyzed {{ job.fit_at|ago }}{% if job.fit.model %} by {{ job.fit.model }}{% endif %}</p>
+{% endif %}
+{% if job.heuristic %}
+<details {{ 'open' if not job.fit }}>
+  <summary>Score breakdown</summary>
+  <dl class="kv" style="margin-top:.5rem">
+    <dt>Title match</dt><dd>{{ job.heuristic.title }}/30</dd>
+    <dt>Skills</dt><dd>{{ job.heuristic.skills }}/35{% if job.heuristic.matched_skills %}: {{ job.heuristic.matched_skills|join(', ') }}{% endif %}</dd>
+    <dt>Experience</dt><dd>{{ job.heuristic.experience }}/20</dd>
+    <dt>Freshness</dt><dd>{{ job.heuristic.freshness }}/10</dd>
+    <dt>Workplace</dt><dd>{{ job.heuristic.workplace }}/5</dd>
+  </dl>
+  {% if job.heuristic.notes %}<p class="muted" style="font-size:.85rem;margin:.5rem 0 0">{{ job.heuristic.notes|join(' · ') }}</p>{% endif %}
+</details>
+{% endif %}

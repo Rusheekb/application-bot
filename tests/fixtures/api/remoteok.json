@@ -1,0 +1,33 @@
+[
+  {"last_updated": 1761400000, "legal": "API Terms of Service: Please link back to the URL on Remote OK and mention Remote OK as a source."},
+  {
+    "slug": "remote-python-backend-engineer-wayne-1123456",
+    "id": "1123456",
+    "epoch": 1761300000,
+    "date": "2026-10-24T09:20:00+00:00",
+    "company": "Wayne Enterprises",
+    "company_logo": "",
+    "position": "Python Backend Engineer",
+    "tags": ["python", "backend", "aws"],
+    "description": "<p>Python services on AWS.</p>",
+    "location": "Worldwide",
+    "salary_min": 100000,
+    "salary_max": 140000,
+    "apply_url": "https://remoteOK.com/remote-jobs/remote-python-backend-engineer-wayne-1123456",
+    "url": "https://remoteOK.com/remote-jobs/remote-python-backend-engineer-wayne-1123456"
+  },
+  {
+    "slug": "remote-designer-1123457",
+    "id": "1123457",
+    "epoch": 1761300000,
+    "date": "2026-10-24T09:20:00+00:00",
+    "company": "Stark Industries",
+    "position": "Product Designer",
+    "tags": ["design", "figma"],
+    "description": "<p>Design things.</p>",
+    "location": "Europe",
+    "salary_min": 0,
+    "salary_max": 0,
+    "url": "https://remoteOK.com/remote-jobs/remote-designer-1123457"
+  }
+]

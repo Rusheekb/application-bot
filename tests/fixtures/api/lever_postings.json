@@ -1,0 +1,34 @@
+[
+  {
+    "additional": "<div>We offer great benefits.</div>",
+    "additionalPlain": "We offer great benefits.",
+    "applyUrl": "https://jobs.lever.co/globex/7f3c1a52-0f6e-4c55-9d6a-1b2c3d4e5f60/apply",
+    "categories": {"commitment": "Full-time", "department": "Engineering", "location": "Austin, TX", "team": "Data Platform", "allLocations": ["Austin, TX", "Remote - US"]},
+    "createdAt": 1761300000000,
+    "descriptionPlain": "Globex is looking for a Data Engineer to own our pipelines.",
+    "description": "<div>Globex is looking for a <b>Data Engineer</b> to own our pipelines.</div>",
+    "hostedUrl": "https://jobs.lever.co/globex/7f3c1a52-0f6e-4c55-9d6a-1b2c3d4e5f60",
+    "id": "7f3c1a52-0f6e-4c55-9d6a-1b2c3d4e5f60",
+    "lists": [
+      {"text": "Requirements", "content": "<li>2-4 years of experience with Spark</li><li>Strong SQL</li>"},
+      {"text": "Nice to have", "content": "<li>Airflow</li>"}
+    ],
+    "text": "Data Engineer",
+    "country": "US",
+    "workplaceType": "hybrid",
+    "salaryRange": {"currency": "USD", "interval": "per-year-salary", "min": 120000, "max": 150000},
+    "salaryDescriptionPlain": "Compensation: $120k-$150k"
+  },
+  {
+    "applyUrl": "https://jobs.lever.co/globex/0a1b2c3d-1111-2222-3333-444455556666/apply",
+    "categories": {"commitment": "Contract", "department": "Engineering", "location": "Remote", "team": "Web"},
+    "createdAt": 1760000000000,
+    "descriptionPlain": "Frontend role. Pay is $60/hr - $75/hr.",
+    "description": "<p>Frontend role. Pay is $60/hr - $75/hr.</p>",
+    "hostedUrl": "https://jobs.lever.co/globex/0a1b2c3d-1111-2222-3333-444455556666",
+    "id": "0a1b2c3d-1111-2222-3333-444455556666",
+    "lists": [],
+    "text": "Frontend Engineer (Contract)",
+    "workplaceType": "remote"
+  }
+]

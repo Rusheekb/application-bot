@@ -1,0 +1,132 @@
+{% set busy = run.status in ('queued', 'running') or working %}
+<div {% if busy %}hx-get="/applications/{{ run.id }}/panel" hx-trigger="every 2s" hx-target="#application-panel" hx-swap="innerHTML"{% endif %}>
+<div class="grid-2">
+  <div class="stack">
+    <section class="card">
+      <div class="card-head">
+        <h2>{{ run.status|run_status }}</h2>
+        <span class="chip">{{ 'Review first' if run.mode == 'review' else 'Submit' }}{% if run.trigger == 'auto' %} · started automatically{% endif %}</span>
+      </div>
+      {% if busy %}<p><span class="spinner" aria-hidden="true"></span> The agent is working on the application. This page updates by itself.</p>{% endif %}
+      {% if run.summary and not busy %}<p>{{ run.summary }}</p>{% endif %}
+      {% if run.error %}<div class="notice bad">{{ run.error }}</div>{% endif %}
+
+      {% if run.status == 'ready_for_review' and not busy %}
+        {% if live %}
+          <div class="notice">Check the answers and the screenshot below. Nothing has been sent yet.</div>
+          <div class="btn-row">
+            <button class="btn btn-good" hx-post="/applications/{{ run.id }}/approve" hx-confirm="Submit this application to {{ job.company }}?">Submit application</button>
+            <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Open the form myself ↗</a>
+            <button class="btn btn-ghost" hx-post="/applications/{{ run.id }}/cancel" hx-confirm="Cancel this application and close the browser?">Cancel</button>
+          </div>
+          <form hx-post="/applications/{{ run.id }}/revise" style="margin-top:1rem">
+            <div class="field">
+              <label for="instruction">Ask for changes before submitting</label>
+              <textarea id="instruction" name="instruction" rows="3" placeholder='e.g. Answer the salary question with "$150k–170k" and make the "Why us?" answer shorter.'></textarea>
+            </div>
+            <div class="form-actions" style="justify-content:flex-start"><button class="btn">Send to the agent</button></div>
+          </form>
+        {% else %}
+          <div class="notice warn">The paused browser has closed (it stays open for a limited time). Submitting now starts a fresh run in submit mode that reuses the answers below.</div>
+          <div class="btn-row">
+            <button class="btn btn-good" hx-post="/applications/{{ run.id }}/approve" hx-confirm="Re-run the agent and submit this application?">Re-run and submit</button>
+            <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Apply myself ↗</a>
+          </div>
+        {% endif %}
+      {% elif run.status == 'needs_input' and not busy %}
+        {% if live %}
+          <form hx-post="/applications/{{ run.id }}/answers">
+            <p>The agent filled in what it could and needs a few answers to finish:</p>
+            <div class="stack">
+              {% for question in run.missing_info %}
+                <div class="field"><label for="answer-{{ loop.index0 }}">{{ question }}</label><input id="answer-{{ loop.index0 }}" name="answer-{{ loop.index0 }}"></div>
+              {% endfor %}
+            </div>
+            <label class="check" style="margin-top:.75rem"><input type="checkbox" name="remember" checked> Save these to my profile's saved answers</label>
+            <div class="btn-row" style="margin-top:.75rem">
+              <button class="btn btn-primary">Continue</button>
+              <button type="button" class="btn btn-ghost" hx-post="/applications/{{ run.id }}/cancel" hx-confirm="Cancel this application?">Cancel</button>
+            </div>
+          </form>
+        {% else %}
+          <p>The agent needed answers to:</p>
+          <ul>{% for q in run.missing_info %}<li>{{ q }}</li>{% endfor %}</ul>
+          <p class="muted">Add them under <a href="/profile">Profile → Saved answers</a>, then start a new run from the job page.</p>
+        {% endif %}
+      {% elif run.status == 'blocked' %}
+        <div class="notice warn">The agent stopped at something only you can do (a CAPTCHA, a sign-in, or a form it couldn't handle). Finish this one yourself:</div>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Open the application ↗</a>
+          <button class="btn" hx-post="/applications/{{ run.id }}/mark-applied">I applied</button>
+          {% if live %}<button class="btn btn-ghost" hx-post="/applications/{{ run.id }}/cancel">Close browser</button>{% endif %}
+        </div>
+      {% elif run.status in ('failed', 'cancelled') %}
+        <div class="btn-row">
+          <button class="btn" hx-post="/jobs/{{ job.id }}/apply" hx-vals='{"mode": "review"}'>Try again</button>
+          <a class="btn" href="/applications/{{ run.id }}/open" target="_blank" rel="noopener noreferrer">Apply myself ↗</a>
+          <button class="btn btn-ghost" hx-post="/applications/{{ run.id }}/mark-applied">I applied</button>
+        </div>
+      {% elif run.status == 'submitted' %}
+        <div class="notice good">Submitted {{ run.finished_at|ago }}. The job is now marked as applied.</div>
+      {% elif run.status == 'superseded' %}
+        <p class="muted">This run was replaced by a newer one. See <a href="/jobs/{{ job.id }}">the job page</a>.</p>
+      {% endif %}
+
+      <dl class="kv" style="margin-top:1rem">
+        <dt>Started</dt><dd>{{ (run.started_at or run.created_at)|localtime }}</dd>
+        {% if run.finished_at %}<dt>Finished</dt><dd>{{ run.finished_at|localtime }}</dd>{% endif %}
+        {% if run.final_url %}<dt>Page</dt><dd style="overflow-wrap:anywhere"><a href="{{ run.final_url|safe_href }}" target="_blank" rel="noopener noreferrer">{{ run.final_url|truncate(80) }}</a></dd>{% endif %}
+        {% if run.usage and run.usage.requests %}<dt>Claude usage</dt><dd>{{ run.usage.requests }} requests{% if run.usage.cost_usd is not none %}, about ${{ '%.2f'|format(run.usage.cost_usd) }}{% endif %}</dd>{% endif %}
+      </dl>
+    </section>
+
+    {% if run.answers %}
+    <section class="card">
+      <h2>What's in the form</h2>
+      {% if run.generated_answers %}<p class="muted">Answers marked <span class="chip warn">written by AI</span> were composed from your resume. Read them before submitting.</p>{% endif %}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+          <tbody>
+          {% for a in run.answers %}
+            {% set written = run.generated_answers and (run.generated_answers|select('in', a.label)|list or run.generated_answers|select('equalto', a.label)|list) %}
+            <tr>
+              <td>{{ a.label }}{% if a.required %} <span class="faint">(required)</span>{% endif %}</td>
+              <td style="white-space:pre-wrap">{% if a.value %}{{ a.value }}{% else %}<span class="{{ 'chip bad' if a.required else 'faint' }}">empty</span>{% endif %}{% if written %} <span class="chip warn">written by AI</span>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    {% if run.screenshot %}
+    <section class="card">
+      <h2>Screenshot</h2>
+      <a href="/applications/{{ run.id }}/screenshot" target="_blank" rel="noopener"><img class="screenshot" src="/applications/{{ run.id }}/screenshot?v={{ run.screenshot }}" alt="Screenshot of the application page"></a>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="stack">
+    <section class="card">
+      <h2>Activity</h2>
+      {% if run.steps %}
+      <ul class="timeline">
+        {% for step in run.steps[-120:] %}
+          <li class="k-{{ step.kind }}{{ ' is-error' if step.error }}">
+            {% if step.kind == 'tool' %}<strong>{{ step.text|replace('_', ' ') }}</strong>{% if step.detail %} <span class="muted">{{ step.detail|truncate(160) }}</span>{% endif %}
+            {% elif step.kind == 'result' %}<details><summary>{{ 'Error' if step.error else 'Result' }}</summary><pre>{{ step.text }}</pre></details>
+            {% elif step.kind == 'thinking' %}{{ step.text|truncate(400) }}
+            {% elif step.kind == 'user' %}<strong>You:</strong> {{ step.text|truncate(300) }}
+            {% elif step.kind == 'finish' %}<strong>Done:</strong> {{ step.text }}
+            {% else %}{{ step.text }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Waiting to start…</p>{% endif %}
+    </section>
+  </aside>
+</div>
+</div>

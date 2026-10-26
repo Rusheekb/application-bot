@@ -1,0 +1,14 @@
+services:
+  jobbot:
+    build: .
+    env_file: .env
+    environment:
+      JOBBOT_HOST: 0.0.0.0
+      JOBBOT_DATA_DIR: /data
+    ports:
+      # Only reachable from this machine. To open it up, set JOBBOT_PASSWORD and
+      # JOBBOT_ALLOWED_HOSTS first.
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

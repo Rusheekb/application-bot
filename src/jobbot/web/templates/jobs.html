@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+{% if setup.no_sources or setup.profile_missing or setup.no_ai or setup.no_resume %}
+<div class="notice">
+  <strong>Finish setting up</strong> so jobbot can find jobs you can realistically land:
+  <ul>
+    {% if setup.profile_missing %}<li><a href="/profile">Complete your profile</a> (missing {{ setup.profile_missing|join(', ') }}).</li>{% endif %}
+    {% if setup.no_resume %}<li><a href="/profile#resume">Upload your resume</a>, then let Claude pre-fill your profile from it.</li>{% endif %}
+    {% if setup.no_sources %}<li><a href="/sources">Add searches and companies to watch</a>.</li>{% endif %}
+    {% if setup.no_ai %}<li>Add <code>ANTHROPIC_API_KEY</code> to your <code>.env</code> for AI fit analysis (jobs get an estimated score until then).</li>{% endif %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="page-head">
+  <div>
+    <h1>Jobs</h1>
+    <p class="muted">{{ total }} job{{ 's' if total != 1 }}{% if tab != 'all' %} in {{ 'Hidden' if tab == 'hidden' else (tab|status_label) }}{% endif %}. Best matches first.</p>
+  </div>
+</div>
+
+<nav class="tabs" aria-label="Job status">
+  {% for t in tabs %}
+    <a href="/jobs?tab={{ t }}" class="{{ 'active' if t == tab }}">{{ 'Hidden' if t == 'hidden' else ('All' if t == 'all' else (t|status_label)) }}<span class="count">{{ counts_by_tab[t] }}</span></a>
+  {% endfor %}
+</nav>
+
+<form class="filters" method="get" action="/jobs">
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search title, company, location" aria-label="Search">
+  <select name="min_score" aria-label="Minimum score" onchange="this.form.requestSubmit()">
+    <option value="0">Any score</option>
+    {% for v in [40, 60, 70, 80] %}<option value="{{ v }}" {{ 'selected' if min_score == v }}>{{ v }}+</option>{% endfor %}
+  </select>
+  <select name="workplace" aria-label="Workplace" onchange="this.form.requestSubmit()">
+    <option value="">Any workplace</option>
+    {% for w in ['remote', 'hybrid', 'onsite'] %}<option value="{{ w }}" {{ 'selected' if workplace == w }}>{{ w|capitalize }}</option>{% endfor %}
+  </select>
+  <select name="source" aria-label="Source" onchange="this.form.requestSubmit()">
+    <option value="">All sources</option>
+    {% for s in sources %}<option value="{{ s }}" {{ 'selected' if source == s }}>{{ s|source_label }}</option>{% endfor %}
+  </select>
+  <select name="sort" aria-label="Sort" onchange="this.form.requestSubmit()">
+    <option value="best" {{ 'selected' if sort == 'best' }}>Best match</option>
+    <option value="newest" {{ 'selected' if sort == 'newest' }}>Newest posting</option>
+    <option value="found" {{ 'selected' if sort == 'found' }}>Recently found</option>
+  </select>
+  <button type="submit" class="btn">Filter</button>
+</form>
+
+{% if jobs %}
+  <div class="job-list">
+    {% for job in jobs %}{% include "partials/job_card.html" %}{% endfor %}
+  </div>
+  {% if pages > 1 %}
+  <nav class="pager" aria-label="Pages">
+    {% if page > 1 %}<a class="btn btn-sm" href="?tab={{ tab }}&q={{ q|urlencode }}&min_score={{ min_score }}&workplace={{ workplace }}&source={{ source }}&sort={{ sort }}&page={{ page - 1 }}">← Previous</a>{% endif %}
+    <span class="muted">Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a class="btn btn-sm" href="?tab={{ tab }}&q={{ q|urlencode }}&min_score={{ min_score }}&workplace={{ workplace }}&source={{ source }}&sort={{ sort }}&page={{ page + 1 }}">Next →</a>{% endif %}
+  </nav>
+  {% endif %}
+  <p class="kbd-help">Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>s</kbd> save · <kbd>a</kbd> applied · <kbd>d</kbd> dismiss · <kbd>o</kbd> open posting · <kbd>Enter</kbd> details</p>
+{% else %}
+  <div class="empty card">
+    {% if tab == 'new' and setup.never_scanned %}
+      <h2>No jobs yet</h2>
+      <p>Add searches and companies on the <a href="/sources">Sources</a> page, then press <strong>Scan now</strong>.</p>
+    {% elif tab == 'new' %}
+      <h2>You're all caught up</h2>
+      <p>New matches will show up here after the next scan.</p>
+    {% else %}
+      <h2>Nothing here</h2>
+      <p>No jobs match these filters.</p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}

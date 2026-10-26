@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="/applications">← Applications</a> · <a href="/jobs/{{ job.id }}">Job details</a></p>
+<div class="page-head">
+  <div>
+    <h1>{{ job.title }}</h1>
+    <div class="job-meta"><strong>{{ job.company }}</strong>{% if job.location %}<span class="sep">·</span>{{ job.location }}{% endif %}</div>
+  </div>
+</div>
+<div id="application-panel">
+  {% include "partials/application_panel.html" %}
+</div>
+{% endblock %}

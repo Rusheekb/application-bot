@@ -1,0 +1,45 @@
+{% set band = job.score|band %}
+<article class="job{{ ' is-closed' if job.closed_at }}" id="job-{{ job.id }}" data-href="/jobs/{{ job.id }}" tabindex="-1">
+  <div class="score {{ band }}" title="{{ 'AI fit score' if job.score_kind == 'ai' else 'Estimated fit (add an Anthropic API key for AI analysis)' }}">
+    {{ job.score if job.score is not none else '–' }}<small>{{ 'AI' if job.score_kind == 'ai' else 'est.' }}</small>
+  </div>
+  <div class="job-body">
+    <a class="job-title" href="/jobs/{{ job.id }}">{{ job.title }}</a>
+    <div class="job-meta">
+      <strong>{{ job.company }}</strong>
+      {% if job.location %}<span class="sep">·</span>{{ job.location }}{% endif %}
+      {% if job.workplace and job.workplace not in (job.location or '')|lower %}<span class="sep">·</span>{{ job.workplace|capitalize }}{% endif %}
+      {% if job|salary %}<span class="sep">·</span>{{ job|salary }}{% endif %}
+      <span class="sep">·</span>{% if job.posted_at %}posted {{ job.posted_at|ago }}{% else %}found {{ job.first_seen_at|ago }}{% endif %}
+    </div>
+    {% if job.fit and job.fit.summary %}
+      <p class="job-summary">{% if job.likelihood %}<strong>{{ job.likelihood|likelihood }}.</strong> {% endif %}{{ job.fit.summary }}</p>
+    {% elif job.heuristic %}
+      <p class="job-summary muted">
+        {% if job.heuristic.matched_skills %}Mentions {{ job.heuristic.matched_skills[:6]|join(', ') }}{% if job.heuristic.matched_skills|length > 6 %} and {{ job.heuristic.matched_skills|length - 6 }} more{% endif %}.{% endif %}
+        {{ job.heuristic.notes|join('. ') }}
+      </p>
+    {% endif %}
+    <div class="chips">
+      {% for entry in (job.sources or [])[:4] %}<span class="chip">{{ entry.source|source_label }}</span>{% endfor %}
+      {% if job.years_required %}<span class="chip">{{ job.years_required }}+ yrs</span>{% endif %}
+      {% if job.closed_at %}<span class="chip bad">Closed</span>{% endif %}
+      {% if job.hidden_reason and not job.show_anyway %}<span class="chip warn">Hidden: {{ job.hidden_reason }}</span>{% endif %}
+      {% if job.status != 'new' and tab in ('all', 'hidden') %}<span class="chip accent">{{ job.status|status_label }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="job-actions">
+    <a class="btn btn-sm" data-action="open" href="{{ (job.apply_url or job.url)|safe_href }}" target="_blank" rel="noopener noreferrer">Open ↗</a>
+    {% if job.status != 'saved' %}
+      <button class="btn btn-sm" data-action="saved" hx-post="/jobs/{{ job.id }}/status" hx-vals='{"status": "saved", "tab": "{{ tab }}"}' hx-target="#job-{{ job.id }}" hx-swap="outerHTML">Save</button>
+    {% endif %}
+    {% if job.status != 'applied' %}
+      <button class="btn btn-sm" data-action="applied" hx-post="/jobs/{{ job.id }}/status" hx-vals='{"status": "applied", "tab": "{{ tab }}"}' hx-target="#job-{{ job.id }}" hx-swap="outerHTML">Applied</button>
+    {% endif %}
+    {% if job.status != 'dismissed' %}
+      <button class="btn btn-sm btn-ghost" data-action="dismissed" hx-post="/jobs/{{ job.id }}/status" hx-vals='{"status": "dismissed", "tab": "{{ tab }}"}' hx-target="#job-{{ job.id }}" hx-swap="outerHTML">Dismiss</button>
+    {% else %}
+      <button class="btn btn-sm btn-ghost" hx-post="/jobs/{{ job.id }}/status" hx-vals='{"status": "new", "tab": "{{ tab }}"}' hx-target="#job-{{ job.id }}" hx-swap="outerHTML">Restore</button>
+    {% endif %}
+  </div>
+</article>

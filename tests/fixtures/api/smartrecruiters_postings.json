@@ -1,0 +1,22 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 1,
+  "content": [
+    {
+      "id": "744000098765432",
+      "name": "Software Engineer II",
+      "uuid": "aaaa-bbbb",
+      "refNumber": "REF1234",
+      "company": {"identifier": "Umbrella", "name": "Umbrella Corporation"},
+      "releasedDate": "2026-10-22T12:00:00.000Z",
+      "location": {"city": "Raleigh", "region": "NC", "country": "us", "remote": false, "fullLocation": "Raleigh, NC, United States"},
+      "industry": {"id": "biotechnology", "label": "Biotechnology"},
+      "department": {"id": "123", "label": "Research IT"},
+      "function": {"id": "engineering", "label": "Engineering"},
+      "typeOfEmployment": {"id": "permanent", "label": "Full-time"},
+      "experienceLevel": {"id": "mid_senior_level", "label": "Mid-Senior Level"},
+      "ref": "https://api.smartrecruiters.com/v1/companies/Umbrella/postings/744000098765432"
+    }
+  ]
+}

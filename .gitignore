@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local configuration and personal data (resume, applications, database)
+.env
+data/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

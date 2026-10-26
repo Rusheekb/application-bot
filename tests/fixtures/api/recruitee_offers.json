@@ -1,0 +1,22 @@
+{
+  "offers": [
+    {
+      "id": 1234567,
+      "slug": "devops-engineer",
+      "title": "DevOps Engineer",
+      "description": "<p>Run our cloud. 3+ years of experience with Terraform.</p>",
+      "requirements": "<ul><li>AWS</li><li>Terraform</li></ul>",
+      "location": "Amsterdam, Netherlands",
+      "city": "Amsterdam",
+      "country": "Netherlands",
+      "remote": false,
+      "hybrid": true,
+      "careers_url": "https://vandelay.recruitee.com/o/devops-engineer",
+      "careers_apply_url": "https://vandelay.recruitee.com/o/devops-engineer/c/new",
+      "published_at": "2026-10-20 08:00:00 UTC",
+      "employment_type_code": "fulltime",
+      "department": "Engineering",
+      "salary": {"min": "60000", "max": "75000", "currency": "EUR", "period": "year"}
+    }
+  ]
+}

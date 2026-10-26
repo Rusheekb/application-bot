@@ -1,0 +1,163 @@
+<!doctype html>
+<!-- Modeled on a Greenhouse-hosted job board page (job-boards.greenhouse.io) for offline tests. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Job Application for Backend Engineer at Acme</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 2rem auto; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .input-wrapper, .select__container, .file-upload, .checkbox { margin: 12px 0; }
+  .select__control { border: 1px solid #999; padding: 6px; position: relative; min-height: 20px; }
+  .select__input { border: 0; outline: none; width: 100%; }
+  .select__menu { border: 1px solid #ccc; background: #fff; position: absolute; z-index: 10; min-width: 300px; }
+  .select__option { padding: 6px; cursor: pointer; }
+  .select__single-value { position: absolute; left: 8px; top: 6px; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="job__header">
+  <h1 class="section-header">Backend Engineer</h1>
+  <p>Acme · New York, NY</p>
+  <a class="btn btn--pill" href="#application-form">Apply</a>
+</div>
+<div class="job__description">
+  <p>We're looking for a backend engineer with 3+ years of experience in Python.</p>
+</div>
+
+<form id="application-form" class="application--form">
+  <h2>Apply for this job</h2>
+  <div class="input-wrapper">
+    <label id="first_name-label" for="first_name" class="label">First Name<span aria-hidden="true">*</span></label>
+    <input id="first_name" type="text" aria-required="true" autocomplete="given-name">
+  </div>
+  <div class="input-wrapper">
+    <label id="last_name-label" for="last_name" class="label">Last Name<span aria-hidden="true">*</span></label>
+    <input id="last_name" type="text" aria-required="true" autocomplete="family-name">
+  </div>
+  <div class="input-wrapper">
+    <label for="email" class="label">Email<span aria-hidden="true">*</span></label>
+    <input id="email" type="text" aria-required="true" autocomplete="email">
+  </div>
+  <div class="input-wrapper">
+    <label for="phone" class="label">Phone</label>
+    <input id="phone" type="tel" autocomplete="tel">
+  </div>
+
+  <div class="file-upload">
+    <div id="upload-label-resume" class="label upload-label">Resume/CV<span aria-hidden="true">*</span></div>
+    <div class="file-upload__wrapper">
+      <button type="button" class="btn btn--pill" onclick="document.getElementById('resume').click()">Attach</button>
+      <button type="button" class="btn btn--pill">Enter manually</button>
+      <input id="resume" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf">
+      <span id="resume-name"></span>
+    </div>
+  </div>
+  <div class="file-upload">
+    <div id="upload-label-cover_letter" class="label upload-label">Cover Letter</div>
+    <div class="file-upload__wrapper">
+      <button type="button" class="btn btn--pill">Attach</button>
+      <input id="cover_letter" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf">
+    </div>
+  </div>
+
+  <div class="input-wrapper">
+    <label id="question_1-label" for="question_1" class="label">LinkedIn Profile</label>
+    <input id="question_1" type="text">
+  </div>
+
+  <div class="select__container" data-options="Yes|No">
+    <label id="question_2-label" for="question_2" class="label select__label">Are you legally authorized to work in the United States?<span aria-hidden="true">*</span></label>
+    <div class="select__control">
+      <div class="select__single-value"></div>
+      <input class="select__input" id="question_2" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-labelledby="question_2-label" aria-required="true" type="text">
+    </div>
+  </div>
+  <div class="select__container" data-options="Yes|No">
+    <label id="question_3-label" for="question_3" class="label select__label">Will you now or in the future require sponsorship for employment visa status?<span aria-hidden="true">*</span></label>
+    <div class="select__control">
+      <div class="select__single-value"></div>
+      <input class="select__input" id="question_3" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-labelledby="question_3-label" aria-required="true" type="text">
+    </div>
+  </div>
+  <div class="input-wrapper">
+    <label id="question_4-label" for="question_4" class="label">Why do you want to work at Acme?</label>
+    <textarea id="question_4" rows="4"></textarea>
+  </div>
+  <div class="select__container" data-options="LinkedIn|Indeed|Company website|Referral|Other">
+    <label id="question_5-label" for="question_5" class="label select__label">How did you hear about this job?</label>
+    <div class="select__control">
+      <div class="select__single-value"></div>
+      <input class="select__input" id="question_5" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-labelledby="question_5-label" type="text">
+    </div>
+  </div>
+
+  <h3>Voluntary Self-Identification</h3>
+  <div class="select__container" data-options="Male|Female|Decline To Self Identify">
+    <label id="gender-label" for="gender" class="label select__label">Gender</label>
+    <div class="select__control">
+      <div class="select__single-value"></div>
+      <input class="select__input" id="gender" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-haspopup="true" aria-labelledby="gender-label" type="text">
+    </div>
+  </div>
+
+  <div class="checkbox">
+    <input type="checkbox" id="privacy" aria-required="true">
+    <label for="privacy">I acknowledge that I have read the Candidate Privacy Notice<span aria-hidden="true">*</span></label>
+  </div>
+
+  <button type="submit" class="btn btn--pill">Submit application</button>
+</form>
+
+<script>
+  // A tiny react-select stand-in: options render in a portal under <body> when the input is focused.
+  let menu = null;
+  function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+  document.querySelectorAll('.select__container').forEach((container) => {
+    const input = container.querySelector('input');
+    const display = container.querySelector('.select__single-value');
+    const all = container.dataset.options.split('|');
+    const render = () => {
+      closeMenu();
+      const q = input.value.toLowerCase();
+      const items = all.filter((o) => o.toLowerCase().includes(q));
+      menu = document.createElement('div');
+      menu.className = 'select__menu';
+      menu.setAttribute('role', 'listbox');
+      const r = container.getBoundingClientRect();
+      menu.style.left = r.left + 'px';
+      menu.style.top = (r.bottom + window.scrollY) + 'px';
+      items.forEach((label, i) => {
+        const opt = document.createElement('div');
+        opt.className = 'select__option';
+        opt.id = 'react-select-' + input.id + '-option-' + i;
+        opt.setAttribute('role', 'option');
+        opt.textContent = label;
+        opt.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          display.textContent = label;
+          input.value = '';
+          input.dataset.selected = label;
+          closeMenu();
+        });
+        menu.appendChild(opt);
+      });
+      document.body.appendChild(menu);
+      input.setAttribute('aria-expanded', 'true');
+    };
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
+    input.addEventListener('blur', () => { const open = menu; setTimeout(() => { if (menu === open) closeMenu(); }, 150); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+  });
+  document.getElementById('resume').addEventListener('change', (e) => {
+    document.getElementById('resume-name').textContent = e.target.files[0] ? e.target.files[0].name : '';
+  });
+  document.getElementById('application-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    window.submitted = (window.submitted || 0) + 1;
+    document.body.innerHTML = '<h1>Thank you for applying.</h1><p>Your application has been received.</p>';
+  });
+</script>
+</body>
+</html>

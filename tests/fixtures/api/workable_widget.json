@@ -1,0 +1,28 @@
+{
+  "name": "Hooli",
+  "description": "<p>Hooli makes the world a better place.</p>",
+  "jobs": [
+    {
+      "title": "Machine Learning Engineer",
+      "shortcode": "9A8B7C6D5E",
+      "code": "",
+      "employment_type": "Full-time",
+      "telecommuting": true,
+      "department": "AI",
+      "url": "https://apply.workable.com/j/9A8B7C6D5E",
+      "shortlink": "https://apply.workable.com/j/9A8B7C6D5E",
+      "application_url": "https://apply.workable.com/j/9A8B7C6D5E/apply",
+      "published_on": "2026-10-24",
+      "created_at": "2026-10-24",
+      "country": "United States",
+      "city": "Palo Alto",
+      "state": "California",
+      "education": "",
+      "experience": "Mid-Senior level",
+      "function": "Engineering",
+      "industry": "Computer Software",
+      "locations": [{"country": "United States", "countryCode": "US", "city": "Palo Alto", "region": "California", "hidden": false}],
+      "description": "<p>Train models with PyTorch. 3+ years of experience required.</p>"
+    }
+  ]
+}

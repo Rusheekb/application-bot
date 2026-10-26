@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Scan history</h1>
+    <p class="muted"><a href="/sources">← Sources</a></p>
+  </div>
+</div>
+{% if scans %}
+<section class="card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Started</th><th>Result</th><th>Found</th><th>New</th><th>Hidden</th><th>AI scored</th><th>Problems</th></tr></thead>
+      <tbody>
+        {% for scan in scans %}
+          <tr>
+            <td>{{ scan.started_at|localtime }}<div class="faint" style="font-size:.8rem">{{ scan.trigger }}</div></td>
+            <td>
+              {% if scan.status == 'running' %}<span class="chip accent">Running</span>
+              {% elif scan.status == 'ok' %}<span class="chip good">OK</span>
+              {% elif scan.status == 'partial' %}<span class="chip warn">Partial</span>
+              {% else %}<span class="chip bad">Failed</span>{% endif %}
+            </td>
+            <td>{{ scan.stats.fetched or 0 }}{% if scan.stats.irrelevant %} <span class="faint">({{ scan.stats.irrelevant }} other titles skipped)</span>{% endif %}</td>
+            <td>{{ scan.stats.new or 0 }}</td>
+            <td>{{ scan.stats.hidden or 0 }}</td>
+            <td>{{ scan.stats.scored or 0 }}{% if scan.stats.ai_usage and scan.stats.ai_usage.cost_usd is not none %} <span class="faint">(~${{ '%.2f'|format(scan.stats.ai_usage.cost_usd) }})</span>{% endif %}</td>
+            <td>
+              {% if scan.errors %}
+                <details><summary>{{ scan.errors|length }} problem{{ 's' if scan.errors|length != 1 }}</summary>
+                  <ul style="margin:.4rem 0 0;padding-left:1rem">{% for e in scan.errors %}<li><strong>{{ e.source }}</strong>: {{ e.error }}</li>{% endfor %}</ul>
+                </details>
+              {% else %}<span class="faint">None</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<div class="empty card"><h2>No scans yet</h2><p>Press <strong>Scan now</strong> at the top right.</p></div>
+{% endif %}
+{% endblock %}

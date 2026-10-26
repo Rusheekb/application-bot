@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · jobbot</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>💼</text></svg>">
+  <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+  <script src="/static/htmx.min.js?v=2.0.11" defer></script>
+  <script src="/static/app.js?v={{ version }}" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/jobs">job<span>bot</span></a>
+  <nav aria-label="Main">
+    <a href="/jobs" class="{{ 'active' if active == 'jobs' }}">Jobs{% if counts.new %} <span class="chip accent">{{ counts.new }}</span>{% endif %}</a>
+    <a href="/applications" class="{{ 'active' if active == 'applications' }}">Applications{% if counts.attention %} <span class="chip warn">{{ counts.attention }}</span>{% endif %}</a>
+    <a href="/sources" class="{{ 'active' if active == 'sources' }}">Sources</a>
+    <a href="/profile" class="{{ 'active' if active == 'profile' }}">Profile</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' }}">Settings</a>
+  </nav>
+  <span class="spacer"></span>
+  <div id="scan-status" class="scan-status" hx-get="/scan/status" hx-trigger="load" hx-swap="outerHTML"></div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<div id="toast" class="toast" hidden role="status" aria-live="polite"></div>
+</body>
+</html>

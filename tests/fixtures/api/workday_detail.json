@@ -1,0 +1,19 @@
+{
+  "jobPostingInfo": {
+    "id": "abc123",
+    "title": "Software Engineer",
+    "jobDescription": "<p>Write drivers in C++. 2+ years of experience.</p><p>The base salary range is 120,000 USD - 190,000 USD.</p>",
+    "location": "US, CA, Santa Clara",
+    "postedOn": "Posted Today",
+    "startDate": "2026-10-25",
+    "timeType": "Full time",
+    "jobReqId": "JR1990001",
+    "jobPostingId": "Software-Engineer_JR1990001",
+    "jobPostingSiteId": "External",
+    "country": {"descriptor": "United States of America", "id": "bc33aa3152ec42d4995f4791a106ed09"},
+    "canApply": true,
+    "posted": true,
+    "externalUrl": "https://chipco.wd5.myworkdayjobs.com/External/job/US-CA-Santa-Clara/Software-Engineer_JR1990001"
+  },
+  "hiringOrganization": {"name": "ChipCo", "url": ""}
+}

@@ -1,0 +1,38 @@
+{
+  "apiVersion": "1",
+  "jobs": [
+    {
+      "id": "d1e2f3a4-b5c6-7d8e-9f00-112233445566",
+      "title": "Platform Engineer",
+      "department": "Engineering",
+      "team": "Infrastructure",
+      "employmentType": "FullTime",
+      "location": "Seattle, WA",
+      "secondaryLocations": [{"location": "Remote (US)", "address": {"postalAddress": {"addressCountry": "United States"}}}],
+      "publishedAt": "2026-10-24T15:30:00.000+00:00",
+      "isListed": true,
+      "isRemote": false,
+      "workplaceType": "Hybrid",
+      "address": {"postalAddress": {"addressRegion": "Washington", "addressCountry": "United States", "addressLocality": "Seattle"}},
+      "jobUrl": "https://jobs.ashbyhq.com/initech/d1e2f3a4-b5c6-7d8e-9f00-112233445566",
+      "applyUrl": "https://jobs.ashbyhq.com/initech/d1e2f3a4-b5c6-7d8e-9f00-112233445566/application",
+      "descriptionHtml": "<p>Build our Kubernetes platform. 4+ years of experience with Kubernetes.</p>",
+      "descriptionPlain": "Build our Kubernetes platform. 4+ years of experience with Kubernetes.",
+      "compensation": {
+        "compensationTierSummary": "$150K – $190K • Offers Equity",
+        "scrapeableCompensationSalarySummary": "$150K - $190K",
+        "compensationTiers": [],
+        "summaryComponents": [
+          {"compensationType": "Salary", "interval": "1 YEAR", "currencyCode": "USD", "minValue": 150000, "maxValue": 190000},
+          {"compensationType": "EquityPercentage", "interval": "NONE", "currencyCode": null, "minValue": 0.01, "maxValue": 0.05}
+        ]
+      }
+    },
+    {
+      "id": "unlisted-1",
+      "title": "Internal Transfer Only",
+      "isListed": false,
+      "jobUrl": "https://jobs.ashbyhq.com/initech/unlisted-1"
+    }
+  ]
+}

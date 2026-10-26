@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% macro text(name, label, hint='', type='text', placeholder='', cls='') -%}
+  <div class="field {{ cls }}">
+    <label for="{{ name }}">{{ label }}</label>
+    <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ profile[name] if profile[name] is not none else '' }}" placeholder="{{ placeholder }}">
+    {% if hint %}<span class="hint">{{ hint }}</span>{% endif %}
+  </div>
+{%- endmacro %}
+{% macro choice(name, label, options) -%}
+  <div class="field">
+    <label for="{{ name }}">{{ label }}</label>
+    <select id="{{ name }}" name="{{ name }}">
+      {% for o in options %}<option value="{{ o }}" {{ 'selected' if profile[name] == o }}>{{ o or 'Decline to self-identify' }}</option>{% endfor %}
+      {% if profile[name] and profile[name] not in options %}<option value="{{ profile[name] }}" selected>{{ profile[name] }}</option>{% endif %}
+    </select>
+  </div>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Profile</h1>
+    <p class="muted">Used to score jobs against your background and to fill in applications. Stays on this machine; only the parts needed for a request are sent to Claude.</p>
+  </div>
+</div>
+{% if message %}<div class="notice good">{{ message }}</div>{% endif %}
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+<section class="card" id="resume" style="margin-bottom:1rem">
+  <div class="card-head">
+    <h2>Resume</h2>
+    {% if resume %}<a class="btn btn-sm" href="/profile/resume/file">Download</a>{% endif %}
+  </div>
+  {% if resume %}
+    <p><strong>{{ resume.filename }}</strong> <span class="muted">· {{ resume.text|length }} characters of text extracted</span></p>
+  {% else %}
+    <p class="muted">Upload the resume you want to send with applications (PDF works best).</p>
+  {% endif %}
+  <form method="post" action="/profile/resume" enctype="multipart/form-data" class="btn-row">
+    <input type="file" name="file" accept=".pdf,.docx,.txt,.md" required aria-label="Resume file">
+    <button class="btn" type="submit">{{ 'Replace resume' if resume else 'Upload resume' }}</button>
+  </form>
+  {% if resume %}
+    <form method="post" action="/profile/resume/autofill" style="margin-top:.75rem">
+      <button class="btn btn-primary" type="submit" {{ 'disabled' if not ai_available }}>Fill in my profile from this resume</button>
+      <span class="faint" style="font-size:.85rem">{{ 'Claude reads your resume and fills empty fields below. Nothing you typed is overwritten.' if ai_available else 'Needs an Anthropic API key.' }}</span>
+    </form>
+  {% endif %}
+</section>
+
+<form method="post" action="/profile" class="stack">
+  <section class="card">
+    <h2>About you</h2>
+    <div class="form-grid">
+      {{ text('first_name', 'First name') }}
+      {{ text('last_name', 'Last name') }}
+      {{ text('preferred_name', 'Preferred name', 'Optional') }}
+      {{ text('pronouns', 'Pronouns', 'Optional') }}
+      {{ text('email', 'Email', type='email') }}
+      {{ text('phone', 'Phone', type='tel') }}
+      {{ text('address', 'Street address', 'Only used if a form requires it') }}
+      {{ text('city', 'City') }}
+      {{ text('state', 'State / region') }}
+      {{ text('postal_code', 'Postal code') }}
+      {{ text('country', 'Country') }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Links</h2>
+    <div class="form-grid">
+      {{ text('linkedin_url', 'LinkedIn', type='url', placeholder='https://linkedin.com/in/…') }}
+      {{ text('github_url', 'GitHub', type='url') }}
+      {{ text('portfolio_url', 'Portfolio / website', type='url') }}
+      {{ text('other_url', 'Other link', type='url') }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Experience and targets</h2>
+    <p class="muted">Target titles decide which jobs from company job boards are kept, so list the roles you'd realistically get interviews for (your current level, maybe one step up).</p>
+    <div class="form-grid">
+      {{ text('current_title', 'Current or most recent title') }}
+      {{ text('current_company', 'Current or most recent company') }}
+      <div class="field">
+        <label for="years_experience">Years of professional experience</label>
+        <input id="years_experience" name="years_experience" type="number" min="0" max="60" step="0.5" value="{{ '%g'|format(profile.years_experience) if profile.years_experience is not none else '' }}">
+      </div>
+      <div class="field span-2">
+        <label for="target_titles">Target job titles <span class="hint">one per line</span></label>
+        <textarea id="target_titles" name="target_titles" rows="4" placeholder="Software Engineer&#10;Backend Engineer&#10;Platform Engineer">{{ profile.target_titles|join('\n') }}</textarea>
+      </div>
+      <div class="field span-2">
+        <label for="skills">Skills <span class="hint">comma or line separated</span></label>
+        <textarea id="skills" name="skills" rows="4" placeholder="Python, PostgreSQL, AWS, Kubernetes…">{{ profile.skills|join(', ') }}</textarea>
+      </div>
+      <div class="field span-all">
+        <label for="summary">Professional summary</label>
+        <textarea id="summary" name="summary" rows="3">{{ profile.summary }}</textarea>
+      </div>
+      <div class="field">
+        <label for="certifications">Certifications</label>
+        <textarea id="certifications" name="certifications" rows="2">{{ profile.certifications|join(', ') }}</textarea>
+      </div>
+      <div class="field">
+        <label for="languages">Languages</label>
+        <textarea id="languages" name="languages" rows="2">{{ profile.languages|join(', ') }}</textarea>
+      </div>
+    </div>
+    <h3 style="margin-top:1rem">Education</h3>
+    <div id="edu-rows" class="stack">
+      {% for e in profile.education %}
+        {% set i = loop.index %}
+        <div class="form-grid repeat-row">
+          <div class="field"><label>School</label><input name="edu-{{ i }}-school" value="{{ e.school }}"></div>
+          <div class="field"><label>Degree</label><input name="edu-{{ i }}-degree" value="{{ e.degree }}"></div>
+          <div class="field"><label>Field of study</label><input name="edu-{{ i }}-field_of_study" value="{{ e.field_of_study }}"></div>
+          <div class="field"><label>Graduation year</label><div class="btn-row"><input name="edu-{{ i }}-graduation_year" value="{{ e.graduation_year }}" style="flex:1"><button class="btn btn-sm btn-ghost" data-remove-row>Remove</button></div></div>
+        </div>
+      {% endfor %}
+    </div>
+    <template id="edu-template">
+      <div class="form-grid repeat-row">
+        <div class="field"><label>School</label><input name="edu-__i__-school"></div>
+        <div class="field"><label>Degree</label><input name="edu-__i__-degree"></div>
+        <div class="field"><label>Field of study</label><input name="edu-__i__-field_of_study"></div>
+        <div class="field"><label>Graduation year</label><div class="btn-row"><input name="edu-__i__-graduation_year" style="flex:1"><button class="btn btn-sm btn-ghost" data-remove-row>Remove</button></div></div>
+      </div>
+    </template>
+    <button class="btn btn-sm" data-add-row="edu-template" data-target="edu-rows" style="margin-top:.6rem">Add education</button>
+  </section>
+
+  <section class="card">
+    <h2>Eligibility and preferences</h2>
+    <div class="form-grid">
+      {{ text('work_authorization', 'Work authorization', 'e.g. "US citizen" or "Authorized to work in the US (green card)"', cls='span-2') }}
+      <div class="field">
+        <label for="requires_sponsorship">Need visa sponsorship?</label>
+        <select id="requires_sponsorship" name="requires_sponsorship">
+          <option value="no" {{ 'selected' if not profile.requires_sponsorship }}>No</option>
+          <option value="yes" {{ 'selected' if profile.requires_sponsorship }}>Yes, now or in the future</option>
+        </select>
+      </div>
+      {{ text('security_clearance', 'Security clearance', 'Leave blank if none') }}
+      <div class="field">
+        <label for="willing_to_relocate">Willing to relocate?</label>
+        <select id="willing_to_relocate" name="willing_to_relocate">
+          <option value="no" {{ 'selected' if not profile.willing_to_relocate }}>No</option>
+          <option value="yes" {{ 'selected' if profile.willing_to_relocate }}>Yes</option>
+        </select>
+      </div>
+      <fieldset class="field">
+        <label>Open to</label>
+        <div class="btn-row">
+          {% for w in workplaces %}<label class="check"><input type="checkbox" name="workplace_{{ w }}" {{ 'checked' if w in profile.workplace_preferences }}> {{ w|capitalize }}</label>{% endfor %}
+        </div>
+      </fieldset>
+      <div class="field">
+        <label for="desired_salary">Desired base salary (per year)</label>
+        <input id="desired_salary" name="desired_salary" inputmode="numeric" value="{{ profile.desired_salary or '' }}" placeholder="140000">
+      </div>
+      {{ text('salary_currency', 'Currency', placeholder='USD') }}
+      {{ text('salary_expectation_text', 'How to answer salary questions', 'e.g. "$140k–160k base, flexible for the right role"', cls='span-2') }}
+      {{ text('notice_period', 'Notice period', placeholder='2 weeks') }}
+      {{ text('earliest_start_date', 'Earliest start date', placeholder='Immediately') }}
+      {{ text('how_did_you_hear', 'Default answer to "How did you hear about us?"', placeholder='Company website') }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Voluntary self-identification</h2>
+    <p class="muted">Used only for optional EEO questions. Leave as "Decline to self-identify" if you prefer.</p>
+    <div class="form-grid">
+      {{ choice('gender', 'Gender', eeo.gender) }}
+      {{ choice('race_ethnicity', 'Race / ethnicity', eeo.race_ethnicity) }}
+      {{ choice('veteran_status', 'Veteran status', eeo.veteran_status) }}
+      {{ choice('disability_status', 'Disability status', eeo.disability_status) }}
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Saved answers</h2>
+    <p class="muted">Answers to questions applications often ask ("Are you comfortable working in the office 3 days a week?"). The apply agent uses these instead of guessing, and adds new ones when you answer its questions.</p>
+    <div id="qa-rows" class="stack">
+      {% for pair in profile.qa %}
+        {% set i = loop.index %}
+        <div class="form-grid repeat-row">
+          <div class="field span-2"><label>Question</label><input name="qa-{{ i }}-question" value="{{ pair.question }}"></div>
+          <div class="field span-2"><label>Answer</label><div class="btn-row"><input name="qa-{{ i }}-answer" value="{{ pair.answer }}" style="flex:1"><button class="btn btn-sm btn-ghost" data-remove-row>Remove</button></div></div>
+        </div>
+      {% endfor %}
+    </div>
+    <template id="qa-template">
+      <div class="form-grid repeat-row">
+        <div class="field span-2"><label>Question</label><input name="qa-__i__-question"></div>
+        <div class="field span-2"><label>Answer</label><div class="btn-row"><input name="qa-__i__-answer" style="flex:1"><button class="btn btn-sm btn-ghost" data-remove-row>Remove</button></div></div>
+      </div>
+    </template>
+    <button class="btn btn-sm" data-add-row="qa-template" data-target="qa-rows" style="margin-top:.6rem">Add answer</button>
+    <div class="field" style="margin-top:1rem">
+      <label for="agent_instructions">Instructions for the apply agent</label>
+      <textarea id="agent_instructions" name="agent_instructions" rows="3" placeholder="e.g. Mention that I'm open to contract-to-hire. Never apply to roles requiring relocation outside the US.">{{ profile.agent_instructions }}</textarea>
+    </div>
+  </section>
+
+  <div class="form-actions">
+    <button class="btn btn-primary" type="submit">Save profile</button>
+  </div>
+</form>
+{% endblock %}
