@@ -136,16 +136,11 @@
 
 <section class="card" id="hosted" style="margin-top:1rem">
   <h2>Hosted job board (GitHub Pages)</h2>
-  <p class="muted">Scan on GitHub Actions and get your matches on an encrypted web page, for free, even while this
-    computer is off. Set it up with the steps in the README, then paste this config into your board's
-    <em>Settings → Back up or import</em> and save (or store it as a repository secret named
-    <code>JOBBOT_CONFIG</code>). Copy it again whenever you change your profile, filters or sources here.</p>
-  <p class="muted">It holds your profile, filters, sources and resume text, so only paste it into your board or a
-    GitHub secret. Auto-apply and status changes stay in this app.</p>
-  {% if hosted_size > 48 %}
-    <div class="notice bad">This config is {{ hosted_size }} KB, over GitHub's 48 KB limit for secrets. Shorten your
-      resume text or profile summary.</div>
-  {% endif %}
+  <p class="muted">The hosted board ranks jobs from a shared feed against each visitor's own settings, which stay in
+    their browser. To use your setup there, open the board's <em>Settings → Back up or import</em>, paste this config
+    and press <em>Load into the form</em>, then Save. Your profile, filters and resume text carry over; companies and
+    searches come from the board's shared feed (<code>feed/sources.json</code> in the repository).</p>
+  <p class="muted">It holds your profile, filters and resume text, so only paste it into your own browser.</p>
   <details style="margin-bottom:.75rem">
     <summary>Show config ({{ hosted_size }} KB)</summary>
     <textarea id="hosted-config" class="mono" readonly rows="4" spellcheck="false" style="width:100%;margin-top:.5rem;font-size:.78rem">{{ hosted_config }}</textarea>

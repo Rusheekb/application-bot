@@ -1,16 +1,19 @@
-# Scans for jobs on a schedule and publishes your encrypted job board to GitHub Pages.
-# Setup: "Hosted job board (GitHub Pages)" in the README. Until the JOBBOT_PAGE_PASSWORD secret
-# exists, it publishes a page with the setup steps.
+# Builds the public job board: scans the shared job sources (feed/sources.json) on a schedule and
+# publishes the board to GitHub Pages. Visitors' settings stay in their own browsers, so nothing
+# here is personal and no secrets are needed. Setup: "Hosted job board" in the README.
 name: Job board
 
 on:
   schedule:
     - cron: "17 */6 * * *" # every 6 hours (GitHub may start scheduled runs a little late)
   workflow_dispatch:
-  # Saving Settings on the board commits this file (encrypted): scan with the new settings now.
+  # Publish right away when the sources or the board page change.
   push:
+    branches: [main]
     paths:
-      - .jobbot/config.enc.json
+      - feed/**
+      - src/jobbot/board/**
+      - src/jobbot/publish.py
 
 permissions:
   contents: read
@@ -21,8 +24,6 @@ concurrency:
 
 jobs:
   scan:
-    # GitHub Pages only deploys from the default branch.
-    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -33,31 +34,29 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Install jobbot
-        run: pip install ".[scrapers,pages]"
-      # The job history is kept between runs in the Actions cache, encrypted with your passphrase.
+        run: pip install ".[scrapers]"
+      # The job history is kept between runs in the Actions cache, so the board knows which jobs
+      # are new and which have closed.
       - name: Restore the job history
         uses: actions/cache/restore@v4
         with:
           path: .jobbot-state
-          key: jobbot-state-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: jobbot-state-
-      # This log is public for public repositories, so `jobbot publish` only prints counts.
+          key: jobbot-feed-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: jobbot-feed-
       - name: Scan and build the board
-        run: jobbot publish --out site --state .jobbot-state/state.json
+        run: jobbot publish --sources feed/sources.json --out site --state .jobbot-state/state.db.gz
         env:
-          JOBBOT_CONFIG: ${{ secrets.JOBBOT_CONFIG }}
-          JOBBOT_PAGE_PASSWORD: ${{ secrets.JOBBOT_PAGE_PASSWORD }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Optional: more job sources for the shared feed. Never sent to visitors.
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}
           JOBBOT_DATA_DIR: ${{ runner.temp }}/jobbot
       - name: Save the job history
-        if: hashFiles('.jobbot-state/state.json') != ''
+        if: hashFiles('.jobbot-state/state.db.gz') != ''
         uses: actions/cache/save@v4
         with:
           path: .jobbot-state
-          key: jobbot-state-${{ github.run_id }}-${{ github.run_attempt }}
+          key: jobbot-feed-${{ github.run_id }}-${{ github.run_attempt }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

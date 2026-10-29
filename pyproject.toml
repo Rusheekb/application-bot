@@ -29,9 +29,7 @@ dependencies = [
 scrapers = ["python-jobspy>=1.4"]
 # Browser automation for the auto-apply agent.
 apply = ["playwright>=1.50"]
-# Encryption for the hosted job board (`jobbot publish`, GitHub Pages).
-pages = ["cryptography>=42"]
-all = ["jobbot[scrapers,apply,pages]"]
+all = ["jobbot[scrapers,apply]"]
 dev = ["pytest>=8", "pytest-asyncio>=0.24", "respx>=0.21", "ruff>=0.6"]
 
 [project.scripts]

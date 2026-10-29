@@ -1,19 +1,16 @@
-"""A hosted job board for GitHub Pages.
+"""The public job board for GitHub Pages.
 
-GitHub Pages only serves static files, so a GitHub Actions workflow does the work, on a schedule
-and whenever you save Settings on the board:
+GitHub Pages only serves files, so a scheduled GitHub Actions workflow builds them:
 
-1. read your setup (profile, filters, companies, searches) from the settings file the board saves
-   to the repository (encrypted), or else from the JOBBOT_CONFIG secret,
-2. restore the previous run's database from an encrypted state file,
+1. read the shared list of job sources (feed/sources.json): company job boards and job-site
+   searches, public and the same for everyone,
+2. restore the previous run's job history,
 3. run a normal scan,
-4. publish the matches as a single static page, encrypted with your passphrase
-   (JOBBOT_PAGE_PASSWORD) because Pages sites are public,
-5. save the database again, encrypted, for the next run.
+4. write the site: the board page plus jobs.json, the current jobs with what the page needs to
+   filter and score them.
 
-Nothing personal is ever written anywhere unencrypted, and the workflow log (public for public
-repositories) only gets counts. Without an Anthropic API key the board uses the built-in
-estimated score, so the whole setup runs for free.
+Everything personal happens in each visitor's browser. Their settings, scores, saved jobs and
+their optional Anthropic API key stay there, so the published files only hold public job postings.
 """
 
 from __future__ import annotations
@@ -21,7 +18,6 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
-import html
 import json
 import os
 import sqlite3
@@ -31,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 
 from jobbot.config import Env
 from jobbot.db import (
@@ -43,6 +39,7 @@ from jobbot.db import (
     save_resume,
     save_settings,
 )
+from jobbot.matching import mentions_no_sponsorship, requires_clearance
 from jobbot.models import Company, Job, ScanRun, SearchQuery, utcnow
 from jobbot.schemas import AppSettings, Profile
 from jobbot.sources import DEFAULT_SEARCH_SOURCES, SEARCH_SOURCE_LABELS, CompanyRef, SourceError, source_label
@@ -51,17 +48,22 @@ from jobbot.sources.detect import detect_company
 from jobbot.text import format_salary, truncate
 
 CONFIG_PREFIX = "jobbot1:"
-# Where the board's Settings page saves your setup, encrypted, in the repository.
-CONFIG_FILE = ".jobbot/config.enc.json"
-PBKDF2_ITERATIONS = 600_000
-MIN_PASSPHRASE = 12
+SOURCES_FILE = "feed/sources.json"
 ASSETS = Path(__file__).with_name("board")
-MAX_JOBS = 400
-MAX_HIDDEN = 150
+# The board page and the files it loads. index.html and app.js name the others with ?v=__VERSION__
+# so browsers fetch new copies after each update.
+BOARD_FILES = ("index.html", "app.css", "app.js", "match.js", "claude.js")
+MAX_JOBS = 2500
+MAX_DESCRIPTION = 6000
 # Jobs not seen in a scan for this long leave the board, and are forgotten a while after that.
 STALE_DAYS = 30
 FORGET_DAYS = 90
-GITHUB_SECRET_LIMIT = 48 * 1024
+# Company boards list every opening (sales, legal, facilities...). Only titles matching one of
+# these, or a search's keywords, are kept, unless sources.json sets its own "keep_titles".
+DEFAULT_KEEP_TITLES = [
+    "engineer", "developer", "programmer", "scientist", "researcher", "machine learning", "ai",
+    "data", "analyst", "architect", "devops", "sre", "product manager", "designer",
+]  # fmt: skip
 
 
 class PublishError(Exception):
@@ -72,7 +74,7 @@ class PublishError(Exception):
 
 
 def export_config(db: Database) -> dict[str, Any]:
-    """Everything a hosted scan needs, as one JSON document."""
+    """Your setup as one JSON document, to import into the hosted board's Settings."""
     with db.session() as s:
         profile = get_profile(s)
         settings = get_settings(s)
@@ -110,7 +112,7 @@ def export_config(db: Database) -> dict[str, Any]:
 
 
 def encode_config(config: dict[str, Any]) -> str:
-    """Compact form for a GitHub secret (gzip + base64)."""
+    """Compact text to paste into the hosted board's Settings (gzip + base64)."""
     raw = json.dumps(config, separators=(",", ":"), sort_keys=True).encode()
     return CONFIG_PREFIX + base64.b64encode(gzip.compress(raw, 9)).decode()
 
@@ -125,11 +127,11 @@ def decode_config(value: str) -> dict[str, Any]:
             data = json.loads(gzip.decompress(base64.b64decode(value, validate=True)))
     except (ValueError, OSError, EOFError) as exc:
         raise PublishError(
-            "JOBBOT_CONFIG isn't valid: paste the JSON config, or the text from "
+            "That config isn't valid: paste the JSON config, or the text from "
             "Settings → Hosted job board (it starts with 'jobbot1:')."
         ) from exc
     if not isinstance(data, dict):
-        raise PublishError("JOBBOT_CONFIG must be a JSON object")
+        raise PublishError("The config must be a JSON object")
     return data
 
 
@@ -259,101 +261,74 @@ def forget_old_jobs(db: Database, days: int = FORGET_DAYS) -> int:
         return result.rowcount or 0
 
 
-# -- encryption ----------------------------------------------------------------------------
+# -- the shared job sources ------------------------------------------------------------------
 
 
-def site_salt(site_id: str) -> bytes:
-    """A fixed salt per site, so the key a browser remembers keeps working after each update."""
-    return hashlib.sha256(f"jobbot-board:{site_id}".encode()).digest()[:16]
+def _strings(value: Any, name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise PublishError(f"sources: '{name}' must be a list of strings")
+    return [v.strip() for v in value if v.strip()]
 
 
-def derive_key(passphrase: str, salt: bytes, iterations: int = PBKDF2_ITERATIONS) -> bytes:
-    return hashlib.pbkdf2_hmac("sha256", passphrase.encode("utf-8"), salt, iterations, dklen=32)
-
-
-def encrypt(data: bytes, key: bytes) -> dict[str, str]:
-    """AES-256-GCM. The browser decrypts this with WebCrypto."""
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-    iv = os.urandom(12)
-    ciphertext = AESGCM(key).encrypt(iv, data, None)
-    return {"iv": base64.b64encode(iv).decode(), "data": base64.b64encode(ciphertext).decode()}
-
-
-def decrypt(blob: dict[str, str], key: bytes) -> bytes:
-    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-
-    return AESGCM(key).decrypt(base64.b64decode(blob["iv"]), base64.b64decode(blob["data"]), None)
-
-
-def seal(data: bytes, key: bytes, salt: bytes) -> dict[str, Any]:
-    """Compress and encrypt `data` in the format the board page opens, and its Settings saves."""
+def load_sources(path: Path) -> dict[str, Any]:
+    """Read and check feed/sources.json, the job sources everyone's board shares."""
+    try:
+        sources = json.loads(path.read_text())
+    except FileNotFoundError as exc:
+        raise PublishError(f"{path} is missing: it lists the companies and searches to scan") from exc
+    except ValueError as exc:
+        raise PublishError(f"{path} isn't valid JSON: {exc}") from exc
+    if not isinstance(sources, dict):
+        raise PublishError(f"{path} must hold a JSON object")
+    for name in ("companies", "searches"):
+        if not isinstance(sources.get(name) or [], list):
+            raise PublishError(f"sources: '{name}' must be a list")
+    max_age = sources.get("max_age_days", 45)
+    if max_age is not None and (not isinstance(max_age, int) or max_age < 1):
+        raise PublishError("sources: 'max_age_days' must be a whole number of days, or null")
+    keep = _strings(sources.get("keep_titles", DEFAULT_KEEP_TITLES), "keep_titles")
+    if not sources.get("companies") and not sources.get("searches"):
+        raise PublishError(f"{path} lists no companies or searches, so there's nothing to scan")
     return {
-        "v": 1,
-        "kdf": "PBKDF2-SHA256",
-        "iterations": PBKDF2_ITERATIONS,
-        "salt": base64.b64encode(salt).decode(),
-        "compression": "gzip",
-        **encrypt(gzip.compress(data, 9), key),
+        "companies": sources.get("companies") or [],
+        "searches": sources.get("searches") or [],
+        "keep_titles": keep,
+        "max_age_days": max_age,
+        "jobspy_country": str(sources.get("jobspy_country") or "usa"),
+        "jobspy_hours_old": _int(sources.get("jobspy_hours_old"), 72, 1, 720),
     }
 
 
-def encrypt_config(config: dict[str, Any], key: bytes, salt: bytes) -> str:
-    """A settings file like the one the board's Settings page saves."""
-    return json.dumps(seal(json.dumps(config).encode(), key, salt))
+def feed_config(sources: dict[str, Any]) -> dict[str, Any]:
+    """The scan setup for the shared feed: nobody's profile, and no filters beyond posting age.
+    Each visitor's own filters and scores are applied in their browser."""
+    return {
+        "profile": {},
+        "settings": {
+            "filters": {
+                "title_include": sources["keep_titles"],
+                "max_years_gap": None,
+                "max_age_days": sources["max_age_days"],
+                "hide_no_sponsorship": False,
+                "hide_clearance_required": False,
+            },
+            "ai": {"enabled": False},
+            "notify": {"webhook_url": ""},
+            "jobspy_country": sources["jobspy_country"],
+            "jobspy_hours_old": sources["jobspy_hours_old"],
+        },
+        "companies": sources["companies"],
+        "searches": sources["searches"],
+    }
 
 
-def read_config_file(path: Path, passphrase: str, key: bytes, salt: bytes) -> dict[str, Any]:
-    """Decrypt the settings saved from the board. `key` is the board's key for this `salt`."""
-    try:
-        sealed = json.loads(path.read_text())
-        file_salt, iterations = base64.b64decode(sealed["salt"]), int(sealed["iterations"])
-        if (file_salt, iterations) != (salt, PBKDF2_ITERATIONS):
-            # Saved under the repository's old name, or with other key settings.
-            if not 100_000 <= iterations <= 10_000_000:
-                raise ValueError("unexpected key settings")
-            key = derive_key(passphrase, file_salt, iterations)
-        plain = decrypt(sealed, key)
-        config = json.loads(gzip.decompress(plain) if sealed.get("compression") == "gzip" else plain)
-    except Exception as exc:
-        raise PublishError(
-            "Couldn't decrypt the settings saved from your board (was the passphrase changed?). "
-            "Open Settings to recover them with the old passphrase, or save them again."
-        ) from exc
-    if not isinstance(config, dict):
-        raise PublishError(
-            "The settings saved from your board aren't valid; open Settings and save them again."
-        )
-    return config
+# -- job history between runs ----------------------------------------------------------------
 
 
-def load_config(
-    config_file: Path | None, config_text: str | None, passphrase: str, key: bytes, salt: bytes
-) -> tuple[dict[str, Any] | None, str | None, list[str]]:
-    """The settings to scan with: those saved from the board, else the JOBBOT_CONFIG secret.
-    Returns (config or None, where it came from, problems to show on the board)."""
-    problems: list[str] = []
-    if config_file is not None and config_file.is_file():
-        try:
-            return read_config_file(config_file, passphrase, key, salt), "board", problems
-        except PublishError as exc:
-            problems.append(str(exc))
-    if config_text and config_text.strip():
-        try:
-            return decode_config(config_text), "secret", problems
-        except PublishError as exc:
-            problems.append(str(exc))
-    return None, None, problems
-
-
-def git_blob_sha(path: Path) -> str:
-    """The ID GitHub gives a file's content, so the board can tell if it changed since this run."""
-    content = path.read_bytes()
-    return hashlib.sha1(b"blob %d\0" % len(content) + content, usedforsecurity=False).hexdigest()
-
-
-def save_state(db_path: Path, state_path: Path, key: bytes) -> None:
-    """Encrypt a consistent copy of the database for the next run."""
+def save_state(db_path: Path, state_path: Path) -> None:
+    """Keep a compact copy of the database for the next run (it only holds public job data)."""
     with tempfile.TemporaryDirectory() as tmp:
         snapshot = Path(tmp) / "state.db"
         conn = sqlite3.connect(db_path)
@@ -361,19 +336,20 @@ def save_state(db_path: Path, state_path: Path, key: bytes) -> None:
             conn.execute("VACUUM INTO ?", (str(snapshot),))
         finally:
             conn.close()
-        blob = encrypt(gzip.compress(snapshot.read_bytes(), 6), key)
+        data = gzip.compress(snapshot.read_bytes(), 6)
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps({"v": 1, **blob}))
+    state_path.write_bytes(data)
 
 
-def restore_state(state_path: Path, db_path: Path, key: bytes) -> str:
+def restore_state(state_path: Path, db_path: Path) -> str:
     """Put the saved database back. Returns "restored", "missing" or "unreadable"."""
     if not state_path.is_file():
         return "missing"
     try:
-        blob = json.loads(state_path.read_text())
-        data = gzip.decompress(decrypt(blob, key))
-    except Exception:
+        data = gzip.decompress(state_path.read_bytes())
+    except (OSError, EOFError):
+        return "unreadable"
+    if not data.startswith(b"SQLite format 3\0"):
         return "unreadable"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     for suffix in ("", "-wal", "-shm"):
@@ -389,9 +365,10 @@ def _iso(value: Any) -> str | None:
     return value.isoformat(timespec="seconds") + "Z" if value else None
 
 
-def _job(job: Job) -> dict[str, Any]:
-    fit = job.fit or {}
-    heuristic = job.heuristic or {}
+def feed_job(job: Job) -> dict[str, Any]:
+    """One job as the board page needs it: the posting plus what the scan already worked out
+    (required years, seniority, sponsorship and clearance mentions) so browsers don't redo it."""
+    description = job.description or ""
     return {
         "id": job.fingerprint[:16],
         "title": job.title,
@@ -400,78 +377,63 @@ def _job(job: Job) -> dict[str, Any]:
         "workplace": job.workplace or "",
         "type": job.employment_type or "",
         "salary": format_salary(job.salary_min, job.salary_max, job.salary_currency, job.salary_period),
+        "salary_min": job.salary_min,
+        "salary_max": job.salary_max,
+        "salary_currency": job.salary_currency,
+        "salary_period": job.salary_period,
         "posted": _iso(job.posted_at),
         "found": _iso(job.first_seen_at),
-        "score": job.score,
-        "ai": job.score_kind == "ai",
-        "likelihood": fit.get("interview_likelihood"),
-        "summary": fit.get("summary", ""),
-        "strengths": fit.get("strengths", []),
-        "gaps": fit.get("gaps", []),
-        "dealbreakers": fit.get("dealbreakers", []),
-        "tips": fit.get("tips", []),
-        "seniority": fit.get("seniority_fit"),
-        "skills": heuristic.get("matched_skills", []),
-        "notes": heuristic.get("notes", []),
-        "breakdown": {
-            k: heuristic.get(k) for k in ("title", "skills", "experience", "freshness", "workplace")
-        },
         "years": job.years_required,
+        "seniority": job.seniority,
+        "no_sponsorship": mentions_no_sponsorship(description),
+        "clearance": requires_clearance(description),
         "url": job.url if is_web_url(job.url) else None,
         "apply": job.apply_url if is_web_url(job.apply_url) else None,
         "sources": sorted({source_label(e.get("source")) for e in job.sources or []})
         or [source_label(job.source)],
-        "description": truncate(job.description or "", 8000),
+        "description": truncate(description, MAX_DESCRIPTION),
     }
 
 
-def board_payload(
-    db: Database, scan_id: int | None = None, notices: list[str] | None = None
+def feed_payload(
+    db: Database,
+    scan_id: int | None = None,
+    notices: list[str] | None = None,
+    repository: str | None = None,
 ) -> dict[str, Any]:
+    """jobs.json: every current job in the shared feed, newest first."""
     with db.session() as s:
         scan = s.get(ScanRun, scan_id) if scan_id else None
         if scan is None:
             scan = s.scalars(select(ScanRun).order_by(ScanRun.started_at.desc()).limit(1)).first()
-        visible = or_(Job.hidden_reason.is_(None), Job.show_anyway.is_(True))
-        current = (Job.closed_at.is_(None), Job.last_seen_at >= utcnow() - timedelta(days=STALE_DAYS))
         jobs = list(
             s.scalars(
                 select(Job)
-                .where(visible, *current)
-                .order_by(Job.score.desc().nulls_last(), Job.posted_at.desc().nulls_last())
+                .where(
+                    or_(Job.hidden_reason.is_(None), Job.show_anyway.is_(True)),
+                    Job.closed_at.is_(None),
+                    Job.last_seen_at >= utcnow() - timedelta(days=STALE_DAYS),
+                )
+                .order_by(func.coalesce(Job.posted_at, Job.first_seen_at).desc())
                 .limit(MAX_JOBS)
             )
         )
-        hidden = list(
-            s.scalars(
-                select(Job)
-                .where(Job.hidden_reason.is_not(None), Job.show_anyway.is_(False), *current)
-                .order_by(Job.first_seen_at.desc())
-                .limit(MAX_HIDDEN)
-            )
-        )
-        errors = [{"source": "Config", "error": n} for n in notices or []]
+        companies = s.scalar(select(func.count()).select_from(Company).where(Company.enabled)) or 0
+        searches = [q.label for q in s.scalars(select(SearchQuery).where(SearchQuery.enabled))]
+        errors = [{"source": "Sources", "error": n} for n in notices or []]
         errors += (scan.errors or []) if scan else []
         return {
+            "version": 1,
             "generated": _iso(utcnow()),
+            "repository": repository,
             "scan": {
                 "status": scan.status if scan else None,
                 "started": _iso(scan.started_at) if scan else None,
                 "stats": (scan.stats or {}) if scan else {},
                 "errors": errors,
             },
-            "jobs": [_job(j) for j in jobs],
-            "hidden": [
-                {
-                    "id": j.fingerprint[:16],
-                    "title": j.title,
-                    "company": j.company,
-                    "location": j.location or "",
-                    "reason": j.hidden_reason,
-                    "url": (j.apply_url or j.url) if is_web_url(j.apply_url or j.url) else None,
-                }
-                for j in hidden
-            ],
+            "sources": {"companies": companies, "searches": searches},
+            "jobs": [feed_job(j) for j in jobs],
         }
 
 
@@ -484,157 +446,58 @@ def pages_url(repository: str | None) -> str:
     return f"https://{host}/" if name.lower() == host else f"https://{host}/{name}/"
 
 
-def setup_page(repository: str | None) -> str:
-    """The public page shown until the board is configured. Contains nothing personal."""
-    page = (ASSETS / "setup.html").read_text()
-    repo_url = (
-        f"https://github.com/{repository}" if repository else "https://github.com/Rusheekb/application-bot"
-    )
-    return page.replace("__REPO_URL__", html.escape(repo_url, quote=True))
-
-
-def write_site(
-    out: Path, payload: dict[str, Any] | None, key: bytes | None, salt: bytes, repository: str | None = None
-) -> None:
-    """Write index.html: the encrypted board, or setup instructions when not configured."""
+def write_site(out: Path, payload: dict[str, Any]) -> None:
+    """Write the board page, its scripts and jobs.json."""
     out.mkdir(parents=True, exist_ok=True)
     (out / ".nojekyll").write_text("")
-    if payload is None or key is None:
-        (out / "index.html").write_text(setup_page(repository))
-        return
-    envelope = seal(json.dumps(payload, separators=(",", ":")).encode(), key, salt)
-    page = (ASSETS / "board.html").read_text()
-    # JSON in a <script type="application/json"> block; escape "<" so it can't close the tag.
-    data = json.dumps(envelope).replace("<", "\\u003c")
-    (out / "index.html").write_text(page.replace("__JOBBOT_ENVELOPE__", data))
-
-
-def _has_sources(db: Database) -> bool:
-    with db.session() as s:
-        return any(
-            s.scalars(select(model.id).where(model.enabled).limit(1)).first() is not None
-            for model in (Company, SearchQuery)
-        )
-
-
-def board_settings(
-    config: dict[str, Any],
-    origin: str | None,
-    *,
-    unreadable: bool,
-    needs_setup: bool,
-    repository: str | None,
-    sha: str | None,
-) -> dict[str, Any]:
-    """What the board's Settings page needs: your settings, defaults for anything they leave out,
-    and where to save them."""
-    return {
-        "config": config,
-        # "board", "secret", "state" (kept from the last run) or None.
-        "origin": origin,
-        "unreadable": unreadable,
-        "needs_setup": needs_setup,
-        "repository": repository,
-        "path": CONFIG_FILE,
-        "sha": sha,
-        "defaults": {
-            "profile": Profile().model_dump(mode="json"),
-            "settings": AppSettings().model_dump(mode="json", exclude={"apply"}),
-        },
-        "sources": SEARCH_SOURCE_LABELS,
-        "default_sources": DEFAULT_SEARCH_SOURCES,
-    }
+    assets = {name: (ASSETS / name).read_text() for name in BOARD_FILES}
+    version = hashlib.sha256("".join(assets.values()).encode()).hexdigest()[:10]
+    for name, text in assets.items():
+        (out / name).write_text(text.replace("__VERSION__", version))
+    (out / "jobs.json").write_text(json.dumps(payload, separators=(",", ":"), ensure_ascii=False))
 
 
 async def publish(
     env: Env,
     out: Path,
     state_path: Path,
-    config_text: str | None,
-    passphrase: str | None,
+    sources_path: Path,
     board_url: str = "",
-    config_file: Path | None = None,
 ) -> int:
-    """Run one hosted scan and write the site. Returns a process exit code.
-
-    Settings come from `config_file`, which the board's Settings page saves, or else from the
-    JOBBOT_CONFIG secret (`config_text`). Output goes to a public log, so it only ever prints
-    counts, never jobs, companies or searches."""
+    """Scan the shared sources and write the site. Returns a process exit code."""
     repository = os.environ.get("GITHUB_REPOSITORY") or None
-    salt = site_salt(repository or "jobbot")
-    if not passphrase:
-        print("Not set up yet (JOBBOT_PAGE_PASSWORD missing): publishing the setup instructions page.")
-        write_site(out, None, None, salt, repository)
-        return 0
-    if len(passphrase) < MIN_PASSPHRASE:
-        raise PublishError(
-            f"JOBBOT_PAGE_PASSWORD must be at least {MIN_PASSPHRASE} characters; use a long passphrase, "
-            "since anyone can download the encrypted page and try to guess it"
-        )
-    key = derive_key(passphrase, salt)
-    saved = config_file is not None and config_file.is_file()
-    config, origin, notices = load_config(config_file, config_text, passphrase, key, salt)
-
+    sources = load_sources(sources_path)
     env.ensure_dirs()
-    restored = restore_state(state_path, env.db_path, key)
+    restored = restore_state(state_path, env.db_path)
     print(
         {
             "restored": "Restored the job history from the last run.",
             "missing": "No saved job history yet: starting fresh.",
-            "unreadable": "Couldn't decrypt the saved job history (was the passphrase changed?): starting fresh.",
+            "unreadable": "Couldn't read the saved job history: starting fresh.",
         }[restored]
     )
     db = Database(env.db_path)
     try:
         db.create_all()
-        if config is not None:
-            try:
-                notices += await import_config(db, config)
-            except PublishError as exc:
-                notices.append(f"{exc}. Fix it in Settings and save again.")
-        needs_setup = not _has_sources(db)
-        if config is None and not needs_setup:
-            # Nothing to read (the secret was deleted, say): keep what the last run used.
-            config, origin = export_config(db), "state"
-        print(
-            {
-                "board": "Using the settings saved from your board.",
-                "secret": "Using the settings in the JOBBOT_CONFIG secret.",
-                "state": "Using the settings from the last run.",
-                None: "Nothing to scan yet: unlock your board and choose what to look for in Settings.",
-            }[origin if not needs_setup else None]
-        )
-        if notices:
-            print(f"{len(notices)} problem(s) with your settings; the details are on your board.")
-
+        notices = await import_config(db, feed_config(sources))
         from jobbot.pipeline import Scanner, rescore_all
 
-        rescore_all(db)  # the profile or filters may have changed since the last run
+        rescore_all(db)  # the sources may have changed since the last run
         forget_old_jobs(db)
-        scan_id = None
-        if not needs_setup:
-            scan_id = await Scanner(db, env, board_url=board_url or pages_url(repository)).run("schedule")
-        payload = board_payload(db, scan_id, notices)
-        payload["settings"] = board_settings(
-            config or {},
-            origin,
-            unreadable=saved and origin != "board",
-            needs_setup=needs_setup,
-            repository=repository,
-            sha=git_blob_sha(config_file) if saved and config_file else None,
+        scan_id = await Scanner(db, env, board_url=board_url or pages_url(repository)).run("schedule")
+        payload = feed_payload(db, scan_id, notices, repository)
+        stats, errors = payload["scan"]["stats"], payload["scan"]["errors"]
+        print(
+            f"Scan {payload['scan']['status']}: {stats.get('fetched', 0)} jobs fetched, "
+            f"{stats.get('new', 0)} new, {len(payload['jobs'])} on the board."
         )
-        if scan_id is not None:
-            stats, errors = payload["scan"]["stats"], payload["scan"]["errors"]
-            print(
-                f"Scan {payload['scan']['status']}: {stats.get('fetched', 0)} jobs fetched, "
-                f"{stats.get('new', 0)} new, {len(payload['jobs'])} on the board, "
-                f"{len(payload['hidden'])} hidden by your filters."
-            )
-            if problems := len(errors) - len(notices):
-                print(f"{problems} source(s) reported problems; the details are on your board.")
-        write_site(out, payload, key, salt, repository)
+        if errors:
+            print(f"{len(errors)} source problem(s), listed at the top of the board:")
+            for error in errors:
+                print(f"- {error['source']}: {error['error']}")
+        write_site(out, payload)
     finally:
         db.engine.dispose()
-    save_state(env.db_path, state_path, key)
-    print("Published the encrypted board.")
+    save_state(env.db_path, state_path)
+    print("Published the job board.")
     return 0

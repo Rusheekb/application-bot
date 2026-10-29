@@ -18,3 +18,7 @@ data/
 .idea/
 .vscode/
 .DS_Store
+
+# Output of `jobbot publish` (the hosted board)
+site/
+.jobbot-state/

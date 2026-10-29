@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Only this site's own scripts run, and the page can only talk to this site and Anthropic's API. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.anthropic.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="A free job board that ranks openings against your own profile. Your settings stay in your browser.">
+<meta name="color-scheme" content="light dark">
+<title>Job board · jobbot</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>💼</text></svg>">
+<link rel="stylesheet" href="app.css?v=__VERSION__">
+<script type="module" src="app.js?v=__VERSION__"></script>
+</head>
+<body>
+<noscript><p class="framed">This job board needs JavaScript.</p></noscript>
+
+<div class="framed" id="framed" hidden>
+  <h1>Open the job board in its own tab</h1>
+  <p class="muted">For your safety, the board doesn't run inside another site. <a id="framed-link" href="./" target="_top">Open it here</a>.</p>
+</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="brand">job<span>bot</span></div>
+    <span class="spacer"></span>
+    <span class="updated" id="updated"></span>
+    <button class="btn-sm" id="settings-button" aria-pressed="false">Settings</button>
+  </header>
+  <main>
+    <div id="banner"></div>
+    <div id="errors"></div>
+    <section id="jobs-view">
+      <h1>Jobs</h1>
+      <p class="muted summary-line" id="subtitle"></p>
+      <nav class="tabs" id="tabs" aria-label="Job status"></nav>
+      <div class="filters">
+        <input type="search" id="search" placeholder="Search title, company, location" aria-label="Search">
+        <select id="min-score" aria-label="Minimum score">
+          <option value="0">Any score</option><option value="40">40+</option><option value="60">60+</option>
+          <option value="70">70+</option><option value="80">80+</option>
+        </select>
+        <select id="sort" aria-label="Sort">
+          <option value="best">Best match</option><option value="newest">Newest posting</option><option value="found">Recently found</option>
+        </select>
+      </div>
+      <div class="ai-bar" id="ai-bar"></div>
+      <div class="list" id="list"></div>
+      <div class="more" id="more"></div>
+      <p class="kbd">Keyboard: <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>Enter</kbd> details · <kbd>s</kbd> save · <kbd>a</kbd> applied · <kbd>d</kbd> dismiss · <kbd>o</kbd> open posting.</p>
+    </section>
+    <section id="settings-view" class="settings" hidden></section>
+  </main>
+  <footer class="site" id="footer"></footer>
+</div>
+</body>
+</html>

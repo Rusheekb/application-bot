@@ -87,7 +87,7 @@ def settings_page(request: Request, msg: str = "", error: str = "") -> Response:
 
 @router.get("/settings/hosted-config")
 def hosted_config_file(request: Request) -> Response:
-    """Your setup for the hosted job board (to import there, or as the JOBBOT_CONFIG secret), as a file."""
+    """Your setup for the hosted job board, to import in its Settings, as a file."""
     return Response(
         encode_config(export_config(get_db(request))),
         media_type="text/plain; charset=utf-8",

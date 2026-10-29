@@ -1,0 +1,32 @@
+{
+  "_help": "The job sources for the public job board. Everyone's board shows jobs from this shared list; each visitor's settings then filter and rank them in their own browser. This file is public. Companies: any careers page or job board URL (Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable, Recruitee). Searches: keywords, an optional location, remote_only, and sources from linkedin, indeed, glassdoor, zip_recruiter, google, remotive, remoteok (adzuna and jsearch also work once their API key secrets are set). keep_titles: company boards list every opening, so only titles matching one of these words, or a search's keywords, are kept. max_age_days: older postings are left out. See README → Hosted job board.",
+  "keep_titles": [
+    "engineer", "developer", "programmer", "scientist", "researcher", "machine learning", "ai",
+    "data", "analyst", "architect", "devops", "sre", "product manager", "designer"
+  ],
+  "max_age_days": 45,
+  "jobspy_country": "usa",
+  "jobspy_hours_old": 72,
+  "companies": [
+    { "name": "Palantir", "url": "https://jobs.lever.co/palantir" },
+    { "name": "Saronic", "url": "https://jobs.lever.co/saronic" },
+    { "name": "webAI", "url": "https://job-boards.greenhouse.io/webai" },
+    { "name": "Further", "url": "https://job-boards.greenhouse.io/further" },
+    { "name": "Base Power", "url": "https://job-boards.greenhouse.io/basepowercompany" },
+    { "name": "Anthropic", "url": "https://job-boards.greenhouse.io/anthropic" },
+    { "name": "OpenAI", "url": "https://jobs.ashbyhq.com/openai" },
+    { "name": "Scale AI", "url": "https://job-boards.greenhouse.io/scaleai" },
+    { "name": "Databricks", "url": "https://job-boards.greenhouse.io/databricks" },
+    { "name": "Ramp", "url": "https://jobs.ashbyhq.com/ramp" }
+  ],
+  "searches": [
+    { "keywords": "AI Engineer", "location": "Texas", "sources": ["linkedin", "indeed"] },
+    { "keywords": "Forward Deployed Engineer", "location": "Texas", "sources": ["linkedin", "indeed"] },
+    { "keywords": "Software Engineer", "location": "Texas", "sources": ["linkedin", "indeed"] },
+    { "keywords": "AI Engineer", "location": "United States", "remote_only": true, "sources": ["linkedin", "remotive", "remoteok"] },
+    { "keywords": "Forward Deployed Engineer", "location": "United States", "remote_only": true, "sources": ["linkedin"] },
+    { "keywords": "Machine Learning Engineer", "location": "United States", "remote_only": true, "sources": ["remotive", "remoteok"] },
+    { "keywords": "Software Engineer", "location": "United States", "remote_only": true, "sources": ["remotive", "remoteok"] },
+    { "keywords": "Data Engineer", "location": "United States", "remote_only": true, "sources": ["remotive", "remoteok"] }
+  ]
+}

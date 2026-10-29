@@ -1,5 +1,5 @@
 {
-  "_help": "Config for the hosted job board. Replace the example values with yours, then paste the whole file into your board's Settings → Back up or import (or save it as the JOBBOT_CONFIG repository secret). Companies can be any careers-page or job-board URL. Search sources: linkedin, indeed, glassdoor, zip_recruiter, google, remotive, remoteok, adzuna, jsearch (the last two need their API key secrets). See README → Hosted job board.",
+  "_help": "Example setup. On the hosted job board, paste it into Settings → Back up or import and press Load into the form; your profile, filters and resume text carry over, while companies and searches come from the board's shared feed (feed/sources.json). Search sources: linkedin, indeed, glassdoor, zip_recruiter, google, remotive, remoteok, adzuna, jsearch (the last two need API keys). See README → Hosted job board.",
   "profile": {
     "current_title": "Software Engineer",
     "years_experience": 3,
